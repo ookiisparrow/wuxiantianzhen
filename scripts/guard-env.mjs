@@ -13,7 +13,7 @@ const FORBIDDEN = [
   { label: "Legacy package scope", token: "@ldrw/" },
 ];
 
-const SCAN_DIRS = ["packages", "scripts", "package.json", "cloudbaserc.json"];
+const SCAN_DIRS = ["packages", "scripts", ".agents", "AGENTS.md", "README.md", "package.json", "cloudbaserc.json"];
 const IGNORE_DIRS = new Set(["node_modules", "dist", ".git", "docs", "archive"]);
 
 const hits = [];
