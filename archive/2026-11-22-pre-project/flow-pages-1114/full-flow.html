@@ -1,0 +1,321 @@
+<title>织女履约全流程</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: 五条泳道(买家与抖店平台 / 织女 / 小程序后台 / 抖店后台与接口 / 京东),自上而下按五个阶段排列;实线是已有依据,橙色虚线待确认,红色是已确认走不通 */
+:root {
+  --bg: #f6f7f5;
+  --fg: #1d2421;
+  --muted: #5d6963;
+  --surface: #ffffff;
+  --line: #8a948e;
+  --lane: #e6ebe8;
+  --warn: #b25b00;
+  --warn-bg: #fff3e2;
+  --no: #b3261e;
+  --no-bg: #fdecea;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #141a17; --fg: #e7ece9; --muted: #9aa6a0; --surface: #1d2622;
+    --line: #6f7b75; --lane: #25302b; --warn: #f0a24a; --warn-bg: #33281a;
+    --no: #ff8a80; --no-bg: #3a1c1a;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #141a17; --fg: #e7ece9; --muted: #9aa6a0; --surface: #1d2622;
+  --line: #6f7b75; --lane: #25302b; --warn: #f0a24a; --warn-bg: #33281a;
+  --no: #ff8a80; --no-bg: #3a1c1a;
+  color-scheme: dark;
+}
+body {
+  background: var(--bg); color: var(--fg);
+  font-family: -apple-system, "PingFang SC", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+  line-height: 1.6;
+  padding-block: 28px 48px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+main { max-width: 1040px; margin: 0 auto; }
+h1 { font-size: 24px; margin: 0 0 6px; text-wrap: balance; }
+h2 { font-size: 16px; margin: 28px 0 8px; }
+.lead { color: var(--muted); margin: 0 0 12px; font-size: 15px; }
+.legend { display: flex; flex-wrap: wrap; gap: 8px 18px; margin: 0 0 14px; font-size: 13px; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.sw { width: 22px; height: 14px; border-radius: 3px; border: 1.5px solid var(--line); background: var(--surface); }
+.sw.w { border-color: var(--warn); border-style: dashed; background: var(--warn-bg); }
+.sw.n { border-color: var(--no); background: var(--no-bg); }
+figure { margin: 0; }
+.scroll { overflow-x: auto; }
+svg { display: block; width: 100%; min-width: 900px; height: auto; color: var(--fg); }
+figcaption { color: var(--muted); font-size: 13px; margin-top: 10px; }
+.laneBg { fill: var(--lane); opacity: 0.45; }
+.laneHd { fill: var(--lane); }
+.box { fill: var(--surface); stroke: var(--line); stroke-width: 1.3; }
+.boxdash { fill: var(--warn-bg); stroke: var(--warn); stroke-width: 1.3; stroke-dasharray: 5 4; }
+.boxno { fill: var(--no-bg); stroke: var(--no); stroke-width: 1.5; }
+.t { font-size: 14px; font-weight: 600; fill: var(--fg); }
+.s { font-size: 11.5px; fill: var(--muted); }
+.ph { font-size: 14px; font-weight: 700; fill: var(--fg); }
+.lb { font-size: 11.5px; fill: var(--muted); }
+.lbw { font-size: 11.5px; fill: var(--warn); }
+.ln { stroke: var(--fg); stroke-width: 1.4; fill: none; }
+.lnd { stroke: var(--warn); stroke-width: 1.4; fill: none; stroke-dasharray: 5 4; }
+.lnn { stroke: var(--no); stroke-width: 1.4; fill: none; stroke-dasharray: 5 4; }
+.arw { fill: var(--fg); }
+.arwd { fill: var(--warn); }
+.arwn { fill: var(--no); }
+ul { margin: 0; padding-left: 20px; }
+li { margin-bottom: 6px; }
+.src { color: var(--muted); font-size: 13px; margin-top: 24px; }
+</style>
+
+<main>
+  <h1>织女履约全流程</h1>
+  <p class="lead">从买家在抖店下单,到织女一键寄件、快递揽收、抖店自动发货,再到改地址和退款。每一步写明是谁在做、用了什么接口。</p>
+  <div class="legend">
+    <span><i class="sw"></i>有依据,可以实现</span>
+    <span><i class="sw w"></i>未证实,待确认</span>
+    <span><i class="sw n"></i>已确认走不通</span>
+  </div>
+
+  <figure>
+    <div class="scroll">
+    <svg viewBox="0 0 990 1530" role="img" aria-label="织女履约全流程,分五个阶段:前置准备、订单进入与派单、织女接单后一键寄件(取号、预约上门、打印)、揽收与发货、改地址和退款等异常。预约上门方式与京东面单打印方式未确定,京东不支持抖店蓝牙打印接口。">
+      <defs>
+        <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="arw"/></marker>
+        <marker id="ad" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="arwd"/></marker>
+        <marker id="an" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="arwn"/></marker>
+      </defs>
+
+      <!-- lane backgrounds and headers -->
+      <rect x="12" y="34" width="172" height="1484" rx="6" class="laneBg"/>
+      <rect x="207" y="34" width="172" height="1484" rx="6" class="laneBg"/>
+      <rect x="402" y="34" width="172" height="1484" rx="6" class="laneBg"/>
+      <rect x="597" y="34" width="172" height="1484" rx="6" class="laneBg"/>
+      <rect x="792" y="34" width="172" height="1484" rx="6" class="laneBg"/>
+      <rect x="12" y="6" width="172" height="24" rx="4" class="laneHd"/>
+      <text x="98" y="23" text-anchor="middle" class="t">买家 / 抖店平台</text>
+      <rect x="207" y="6" width="172" height="24" rx="4" class="laneHd"/>
+      <text x="293" y="23" text-anchor="middle" class="t">织女(小程序)</text>
+      <rect x="402" y="6" width="172" height="24" rx="4" class="laneHd"/>
+      <text x="488" y="23" text-anchor="middle" class="t">小程序后台</text>
+      <rect x="597" y="6" width="172" height="24" rx="4" class="laneHd"/>
+      <text x="683" y="23" text-anchor="middle" class="t">抖店后台 / 接口</text>
+      <rect x="792" y="6" width="172" height="24" rx="4" class="laneHd"/>
+      <text x="878" y="23" text-anchor="middle" class="t">京东物流</text>
+
+      <!-- Phase 1 -->
+      <text x="20" y="58" class="ph">① 前置准备(一次性)</text>
+      <rect x="410" y="66" width="156" height="52" rx="6" class="boxdash"/>
+      <text x="488" y="88" text-anchor="middle" class="t">申请自用型应用</text>
+      <text x="488" y="106" text-anchor="middle" class="s">软著要求待核实</text>
+      <rect x="605" y="66" width="156" height="52" rx="6" class="boxdash"/>
+      <text x="683" y="88" text-anchor="middle" class="t">电子面单权限包</text>
+      <text x="683" y="106" text-anchor="middle" class="s">能否拿到待确认</text>
+      <rect x="800" y="66" width="156" height="52" rx="6" class="box"/>
+      <text x="878" y="88" text-anchor="middle" class="t">京东月结账号</text>
+      <text x="878" y="106" text-anchor="middle" class="s">已有,所有织女共用</text>
+      <line x1="566" y1="92" x2="603" y2="92" class="lnd" marker-end="url(#ad)"/>
+
+      <rect x="215" y="138" width="156" height="52" rx="6" class="box"/>
+      <text x="293" y="160" text-anchor="middle" class="t">提交取件地址</text>
+      <text x="293" y="178" text-anchor="middle" class="s">含联系人、电话</text>
+      <rect x="410" y="138" width="156" height="52" rx="6" class="box"/>
+      <text x="488" y="160" text-anchor="middle" class="t">运营核对录入</text>
+      <text x="488" y="178" text-anchor="middle" class="s">每位织女一次</text>
+      <rect x="605" y="138" width="156" height="52" rx="6" class="box"/>
+      <text x="683" y="160" text-anchor="middle" class="t">新增地址 + 合作</text>
+      <text x="683" y="178" text-anchor="middle" class="s">后台手工,无接口</text>
+      <rect x="800" y="138" width="156" height="52" rx="6" class="boxdash"/>
+      <text x="878" y="160" text-anchor="middle" class="t">手机号验证</text>
+      <text x="878" y="178" text-anchor="middle" class="s">个人地址能否通过</text>
+      <line x1="371" y1="164" x2="408" y2="164" class="ln" marker-end="url(#ar)"/>
+      <line x1="566" y1="164" x2="603" y2="164" class="ln" marker-end="url(#ar)"/>
+      <line x1="761" y1="164" x2="798" y2="164" class="ln" marker-end="url(#ar)"/>
+      <line x1="878" y1="118" x2="878" y2="136" class="ln" marker-end="url(#ar)"/>
+
+      <!-- Phase 2 -->
+      <text x="20" y="222" class="ph">② 订单进入与派单</text>
+      <rect x="20" y="232" width="156" height="52" rx="6" class="box"/>
+      <text x="98" y="254" text-anchor="middle" class="t">买家下单</text>
+      <text x="98" y="272" text-anchor="middle" class="s">直播间挂抖店商品</text>
+      <rect x="605" y="232" width="156" height="52" rx="6" class="box"/>
+      <text x="683" y="254" text-anchor="middle" class="t">订单生成</text>
+      <text x="683" y="272" text-anchor="middle" class="s">收件信息是密文</text>
+      <line x1="176" y1="258" x2="603" y2="258" class="ln" marker-end="url(#ar)"/>
+      <text x="390" y="251" text-anchor="middle" class="lb">付款成功</text>
+
+      <rect x="410" y="304" width="156" height="52" rx="6" class="box"/>
+      <text x="488" y="326" text-anchor="middle" class="t">拉单 / 消息推送</text>
+      <text x="488" y="344" text-anchor="middle" class="s">存密文 + 省市区</text>
+      <polyline points="683,284 683,330 568,330" class="ln" marker-end="url(#ar)"/>
+
+      <rect x="410" y="376" width="156" height="52" rx="6" class="box"/>
+      <text x="488" y="398" text-anchor="middle" class="t">确认期</text>
+      <text x="488" y="416" text-anchor="middle" class="s">内部延迟 12 小时</text>
+      <line x1="488" y1="356" x2="488" y2="374" class="ln" marker-end="url(#ar)"/>
+
+      <rect x="410" y="448" width="156" height="52" rx="6" class="box"/>
+      <text x="488" y="470" text-anchor="middle" class="t">派单筛选</text>
+      <text x="488" y="488" text-anchor="middle" class="s">排除不可达织女</text>
+      <rect x="605" y="448" width="156" height="52" rx="6" class="box"/>
+      <text x="683" y="470" text-anchor="middle" class="t">物流探查接口</text>
+      <text x="683" y="488" text-anchor="middle" class="s">不需要明文</text>
+      <line x1="488" y1="428" x2="488" y2="446" class="ln" marker-end="url(#ar)"/>
+      <line x1="566" y1="466" x2="603" y2="466" class="ln" marker-end="url(#ar)"/>
+      <line x1="603" y1="486" x2="568" y2="486" class="ln" marker-end="url(#ar)"/>
+
+      <rect x="410" y="520" width="156" height="52" rx="6" class="box"/>
+      <text x="488" y="542" text-anchor="middle" class="t">整点派单</text>
+      <text x="488" y="560" text-anchor="middle" class="s">每人最多 3 单</text>
+      <rect x="215" y="520" width="156" height="52" rx="6" class="box"/>
+      <text x="293" y="542" text-anchor="middle" class="t">收到派单</text>
+      <text x="293" y="560" text-anchor="middle" class="s">1 小时内回复</text>
+      <line x1="488" y1="500" x2="488" y2="518" class="ln" marker-end="url(#ar)"/>
+      <line x1="410" y1="546" x2="373" y2="546" class="ln" marker-end="url(#ar)"/>
+
+      <rect x="215" y="592" width="156" height="52" rx="6" class="box"/>
+      <text x="293" y="614" text-anchor="middle" class="t">接单</text>
+      <text x="293" y="632" text-anchor="middle" class="s">开始制作</text>
+      <rect x="410" y="592" width="156" height="52" rx="6" class="box"/>
+      <text x="488" y="614" text-anchor="middle" class="t">绑定订单织女</text>
+      <text x="488" y="632" text-anchor="middle" class="s">记下发货地址</text>
+      <line x1="293" y1="572" x2="293" y2="590" class="ln" marker-end="url(#ar)"/>
+      <line x1="371" y1="618" x2="408" y2="618" class="ln" marker-end="url(#ar)"/>
+
+      <!-- Phase 3 -->
+      <text x="20" y="676" class="ph">③ 一键寄件:取号、预约、打印</text>
+      <rect x="215" y="686" width="156" height="52" rx="6" class="box"/>
+      <text x="293" y="708" text-anchor="middle" class="t">点「一键寄件」</text>
+      <text x="293" y="726" text-anchor="middle" class="s">制作完成后</text>
+      <rect x="410" y="686" width="156" height="52" rx="6" class="box"/>
+      <text x="488" y="708" text-anchor="middle" class="t">云函数处理</text>
+      <text x="488" y="726" text-anchor="middle" class="s">查织女登记地址</text>
+      <line x1="293" y1="644" x2="293" y2="684" class="ln" marker-end="url(#ar)"/>
+      <line x1="371" y1="712" x2="408" y2="712" class="ln" marker-end="url(#ar)"/>
+
+      <rect x="410" y="758" width="156" height="52" rx="6" class="box"/>
+      <text x="488" y="780" text-anchor="middle" class="t">取最新密文</text>
+      <text x="488" y="798" text-anchor="middle" class="s">用该订单自己的</text>
+      <rect x="605" y="758" width="156" height="52" rx="6" class="box"/>
+      <text x="683" y="780" text-anchor="middle" class="t">orderDetail</text>
+      <text x="683" y="798" text-anchor="middle" class="s">返回收件密文</text>
+      <line x1="488" y1="738" x2="488" y2="756" class="ln" marker-end="url(#ar)"/>
+      <line x1="566" y1="776" x2="603" y2="776" class="ln" marker-end="url(#ar)"/>
+      <line x1="603" y1="796" x2="568" y2="796" class="ln" marker-end="url(#ar)"/>
+
+      <rect x="410" y="830" width="156" height="52" rx="6" class="box"/>
+      <text x="488" y="852" text-anchor="middle" class="t">取号请求</text>
+      <text x="488" y="870" text-anchor="middle" class="s">织女地址 + 密文</text>
+      <rect x="605" y="830" width="156" height="52" rx="6" class="box"/>
+      <text x="683" y="852" text-anchor="middle" class="t">校验后取号</text>
+      <text x="683" y="870" text-anchor="middle" class="s">newCreateOrder</text>
+      <rect x="800" y="830" width="156" height="52" rx="6" class="box"/>
+      <text x="878" y="852" text-anchor="middle" class="t">分配运单号</text>
+      <text x="878" y="870" text-anchor="middle" class="s">记入月结</text>
+      <line x1="488" y1="810" x2="488" y2="828" class="ln" marker-end="url(#ar)"/>
+      <line x1="566" y1="846" x2="603" y2="846" class="ln" marker-end="url(#ar)"/>
+      <line x1="603" y1="866" x2="568" y2="866" class="ln" marker-end="url(#ar)"/>
+      <line x1="761" y1="846" x2="798" y2="846" class="ln" marker-end="url(#ar)"/>
+      <line x1="798" y1="866" x2="763" y2="866" class="ln" marker-end="url(#ar)"/>
+
+      <rect x="410" y="902" width="156" height="52" rx="6" class="box"/>
+      <text x="488" y="924" text-anchor="middle" class="t">收到运单号</text>
+      <text x="488" y="942" text-anchor="middle" class="s">ebill_infos</text>
+      <line x1="488" y1="882" x2="488" y2="900" class="ln" marker-end="url(#ar)"/>
+
+      <rect x="410" y="974" width="156" height="52" rx="6" class="boxdash"/>
+      <text x="488" y="996" text-anchor="middle" class="t">取收件明文</text>
+      <text x="488" y="1014" text-anchor="middle" class="s">仅京东下单路线</text>
+      <rect x="605" y="974" width="156" height="52" rx="6" class="boxdash"/>
+      <text x="683" y="996" text-anchor="middle" class="t">batchDecrypt</text>
+      <text x="683" y="1014" text-anchor="middle" class="s">有额度、不存明文</text>
+      <line x1="488" y1="954" x2="488" y2="972" class="lnd" marker-end="url(#ad)"/>
+      <line x1="566" y1="992" x2="603" y2="992" class="lnd" marker-end="url(#ad)"/>
+      <line x1="603" y1="1012" x2="568" y2="1012" class="lnd" marker-end="url(#ad)"/>
+
+      <rect x="410" y="1046" width="156" height="52" rx="6" class="boxdash"/>
+      <text x="488" y="1068" text-anchor="middle" class="t">预约上门</text>
+      <text x="488" y="1086" text-anchor="middle" class="s">方式待定</text>
+      <rect x="800" y="1046" width="156" height="52" rx="6" class="boxdash"/>
+      <text x="878" y="1068" text-anchor="middle" class="t">接单派快递员</text>
+      <text x="878" y="1086" text-anchor="middle" class="s">按预约时段</text>
+      <line x1="488" y1="1026" x2="488" y2="1044" class="lnd" marker-end="url(#ad)"/>
+      <line x1="566" y1="1072" x2="798" y2="1072" class="lnd" marker-end="url(#ad)"/>
+      <text x="683" y="1064" text-anchor="middle" class="lbw">sender_fetch_time 或京东下单</text>
+
+      <rect x="410" y="1118" width="156" height="52" rx="6" class="boxdash"/>
+      <text x="488" y="1140" text-anchor="middle" class="t">取面单打印数据</text>
+      <text x="488" y="1158" text-anchor="middle" class="s">京东:方式待定</text>
+      <rect x="605" y="1118" width="156" height="52" rx="6" class="boxno"/>
+      <text x="683" y="1140" text-anchor="middle" class="t">蓝牙打印接口</text>
+      <text x="683" y="1158" text-anchor="middle" class="s">不支持京东</text>
+      <rect x="215" y="1118" width="156" height="52" rx="6" class="boxdash"/>
+      <text x="293" y="1140" text-anchor="middle" class="t">织女打印贴单</text>
+      <text x="293" y="1158" text-anchor="middle" class="s">方式待定</text>
+      <line x1="488" y1="1098" x2="488" y2="1116" class="lnd" marker-end="url(#ad)"/>
+      <line x1="566" y1="1136" x2="603" y2="1136" class="lnn" marker-end="url(#an)"/>
+      <line x1="410" y1="1150" x2="373" y2="1150" class="lnd" marker-end="url(#ad)"/>
+
+      <!-- Phase 4 -->
+      <text x="20" y="1202" class="ph">④ 揽收与发货</text>
+      <rect x="800" y="1212" width="156" height="52" rx="6" class="box"/>
+      <text x="878" y="1234" text-anchor="middle" class="t">快递员揽收</text>
+      <text x="878" y="1252" text-anchor="middle" class="s">产生揽收轨迹</text>
+      <rect x="605" y="1212" width="156" height="52" rx="6" class="boxdash"/>
+      <text x="683" y="1234" text-anchor="middle" class="t">自动发货</text>
+      <text x="683" y="1252" text-anchor="middle" class="s">对 API 取号未实测</text>
+      <rect x="20" y="1212" width="156" height="52" rx="6" class="box"/>
+      <text x="98" y="1234" text-anchor="middle" class="t">买家看到物流</text>
+      <text x="98" y="1252" text-anchor="middle" class="s">订单状态已发货</text>
+      <line x1="878" y1="1098" x2="878" y2="1210" class="ln" marker-end="url(#ar)"/>
+      <line x1="800" y1="1238" x2="763" y2="1238" class="ln" marker-end="url(#ar)"/>
+      <line x1="605" y1="1238" x2="178" y2="1238" class="ln" marker-end="url(#ar)"/>
+
+      <rect x="410" y="1284" width="156" height="52" rx="6" class="box"/>
+      <text x="488" y="1306" text-anchor="middle" class="t">更新织女进度</text>
+      <text x="488" y="1324" text-anchor="middle" class="s">订阅轨迹</text>
+      <rect x="215" y="1284" width="156" height="52" rx="6" class="box"/>
+      <text x="293" y="1306" text-anchor="middle" class="t">看到已揽收</text>
+      <text x="293" y="1324" text-anchor="middle" class="s">订单完成</text>
+      <polyline points="683,1264 683,1310 568,1310" class="ln" marker-end="url(#ar)"/>
+      <line x1="410" y1="1310" x2="373" y2="1310" class="ln" marker-end="url(#ar)"/>
+
+      <!-- Phase 5 -->
+      <text x="20" y="1368" class="ph">⑤ 异常:改地址、退款</text>
+      <rect x="605" y="1378" width="156" height="52" rx="6" class="box"/>
+      <text x="683" y="1400" text-anchor="middle" class="t">买家改地址</text>
+      <text x="683" y="1418" text-anchor="middle" class="s">地址变更消息</text>
+      <rect x="410" y="1378" width="156" height="52" rx="6" class="box"/>
+      <text x="488" y="1400" text-anchor="middle" class="t">未揽收:更新面单</text>
+      <text x="488" y="1418" text-anchor="middle" class="s">已揽收:重新取号</text>
+      <line x1="605" y1="1404" x2="568" y2="1404" class="ln" marker-end="url(#ar)"/>
+
+      <rect x="605" y="1450" width="156" height="52" rx="6" class="box"/>
+      <text x="683" y="1472" text-anchor="middle" class="t">退款成功消息</text>
+      <text x="683" y="1490" text-anchor="middle" class="s">订单被取消</text>
+      <rect x="410" y="1450" width="156" height="52" rx="6" class="box"/>
+      <text x="488" y="1472" text-anchor="middle" class="t">取消派单</text>
+      <text x="488" y="1490" text-anchor="middle" class="s">无轨迹可撤面单</text>
+      <rect x="800" y="1450" width="156" height="52" rx="6" class="boxdash"/>
+      <text x="878" y="1472" text-anchor="middle" class="t">京东单号</text>
+      <text x="878" y="1490" text-anchor="middle" class="s">不支持回收</text>
+      <line x1="683" y1="1430" x2="683" y2="1448" class="ln" marker-end="url(#ar)"/>
+      <line x1="605" y1="1476" x2="568" y2="1476" class="ln" marker-end="url(#ar)"/>
+    </svg>
+    </div>
+    <figcaption>阶段三是最复杂的:取号走抖店官方面单,预约上门和京东面单打印这两步还没有确定方案。</figcaption>
+  </figure>
+
+  <h2>读图要点</h2>
+  <ul>
+    <li><strong>全程不解密也能取号</strong>:取号用密文,密文必须来自该订单自己的订单详情,订单改地址后要重新取。解密只出现在「京东下单」这一条备选路线里。</li>
+    <li><strong>登记是前提</strong>:每位织女的地址要先在抖店后台登记并通过京东验证,取号时才能用。</li>
+    <li><strong>两处橙色待定</strong>:预约上门(取号时的 <code>sender_fetch_time</code> 是否有效,或者调京东下单接口)、京东面单怎么打印。</li>
+    <li><strong>红色已确认</strong>:抖店蓝牙打印指令接口的支持名单里没有京东。</li>
+    <li><strong>订单回到买家</strong>:揽收后抖店自动发货,买家看到物流,你们只订阅轨迹更新织女进度。</li>
+  </ul>
+
+  <p class="src">依据:抖店开放平台电子面单、订单、物流接口文档,抖店学习中心电子面单手册,抖店开放平台智能客服回复(未逐条核对),京东物流开放平台文档。查阅日期 2026-11-14。没有实测。</p>
+</main>

@@ -1,0 +1,842 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>流程优化与节点合并确认 · 第 8 轮</title>
+<style>
+:root {
+  --bg: #f4f6f3;
+  --surface: #ffffff;
+  --ink: #1d2623;
+  --muted: #5b6862;
+  --line: #d8ded9;
+  --accent: #2f5d8a;
+  --accent-ink: #ffffff;
+  --accent-soft: #e6eff8;
+  --rec: #247252;
+  --rec-soft: #e3f2eb;
+  --scene-bg: #f7f8f5;
+  --warn: #9a6a12;
+  --warn-soft: #f7edd4;
+  --danger: #a33a3a;
+  --font-body: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, -apple-system, sans-serif;
+  --font-display: "Songti SC", "STSong", "Noto Serif SC", Georgia, serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #121816;
+    --surface: #1b2321;
+    --ink: #e7edea;
+    --muted: #9aa7a1;
+    --line: #2e3b36;
+    --accent: #7cb0e0;
+    --accent-ink: #0f1a24;
+    --accent-soft: #1d2e3e;
+    --rec: #6bc49c;
+    --rec-soft: #173028;
+    --scene-bg: #151c1a;
+    --warn: #e0b45c;
+    --warn-soft: #332818;
+    --danger: #e08585;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.7;
+  padding: 20px 16px 64px;
+}
+.wrap {
+  max-width: 720px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+header.top {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.brandrow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.brand {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 19px;
+}
+.round {
+  font-size: 13px;
+  color: var(--muted);
+}
+.strip {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 6px;
+}
+.seg {
+  height: 10px;
+  border-radius: 4px;
+  background: var(--line);
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  transition: transform .12s ease, background .15s ease;
+}
+.seg:hover { transform: scaleY(1.25); }
+.seg.done { background: var(--accent); }
+.seg.defer { background: var(--warn); }
+.seg.cur { outline: 2px solid var(--ink); outline-offset: 2px; }
+.stripmeta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  color: var(--muted);
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 26px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, .03);
+}
+.eyebrow {
+  font-size: 13px;
+  color: var(--muted);
+  font-weight: 600;
+}
+h1 {
+  font-family: var(--font-display);
+  font-size: 24px;
+  line-height: 1.38;
+  margin: 0;
+}
+.scene {
+  background: var(--scene-bg);
+  border-left: 4px solid var(--accent);
+  border-radius: 0 8px 8px 0;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 15px;
+}
+.scene .lab {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent);
+  letter-spacing: .04em;
+}
+.scene p { margin: 0; }
+.opts {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.optwrap {
+  display: flex;
+  flex-direction: column;
+}
+.opt {
+  display: grid;
+  grid-template-columns: 30px 1fr;
+  gap: 12px;
+  padding: 15px;
+  border: 1.5px solid var(--line);
+  border-radius: 10px;
+  cursor: pointer;
+  background: var(--surface);
+  transition: border-color .15s ease, background .15s ease;
+}
+.opt:hover { border-color: var(--accent); }
+.opt.sel {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.opt.hasWhy {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.opt input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.badge {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1.5px solid var(--line);
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--muted);
+  margin-top: 1px;
+}
+.opt.sel .badge {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-color: var(--accent);
+}
+.otitle {
+  font-weight: 700;
+  font-size: 16px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.odesc {
+  display: block;
+  color: var(--muted);
+  font-size: 14.5px;
+  margin-top: 4px;
+}
+.pill {
+  font-size: 12px;
+  font-weight: 700;
+  padding: 2px 9px;
+  border-radius: 99px;
+  background: var(--rec-soft);
+  color: var(--rec);
+}
+.why {
+  border: 1.5px solid var(--rec);
+  border-top: 0;
+  background: var(--rec-soft);
+  border-radius: 0 0 10px 10px;
+  padding: 11px 15px;
+  font-size: 14.5px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.why .lab {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--rec);
+}
+.why p { margin: 0; }
+textarea {
+  width: 100%;
+  font: inherit;
+  font-size: 15px;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1.5px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  min-height: 76px;
+  resize: vertical;
+  line-height: 1.6;
+}
+textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.field .lab {
+  font-size: 13.5px;
+  color: var(--muted);
+}
+.defer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14.5px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.defer input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--warn);
+}
+.nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding-top: 6px;
+  border-top: 1px solid var(--line);
+}
+.navr {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 18px;
+  border-radius: 8px;
+  border: 1.5px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 15px;
+  cursor: pointer;
+  min-height: 44px;
+}
+.btn:hover { border-color: var(--accent); }
+.btn.primary {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-color: var(--accent);
+  font-weight: 700;
+}
+.btn.recbtn {
+  background: var(--rec-soft);
+  color: var(--rec);
+  border-color: var(--rec);
+  font-weight: 600;
+}
+.btn.small {
+  min-height: 36px;
+  padding: 6px 12px;
+  font-size: 13.5px;
+}
+.cats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 10px;
+}
+.cat {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px 14px;
+  font-size: 14.5px;
+  background: var(--scene-bg);
+}
+.cat b { display: block; margin-bottom: 2px; }
+.cat span { color: var(--muted); font-size: 13.5px; }
+.sumlist {
+  display: flex;
+  flex-direction: column;
+}
+.sumitem {
+  display: grid;
+  grid-template-columns: 36px 1fr auto;
+  gap: 12px;
+  padding: 14px 0;
+  border-top: 1px solid var(--line);
+  align-items: start;
+}
+.sumitem:first-child { border-top: 0; }
+.sumno {
+  font-family: var(--font-display);
+  font-weight: 700;
+  color: var(--muted);
+  font-size: 15px;
+}
+.sumq { font-weight: 700; font-size: 15.5px; }
+.sumans { font-size: 14.5px; margin-top: 4px; white-space: pre-wrap; }
+.sumnote { font-size: 13.5px; color: var(--muted); margin-top: 4px; white-space: pre-wrap; }
+.tag {
+  display: inline-block;
+  font-size: 12px;
+  padding: 1px 8px;
+  border-radius: 99px;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+.tag.ok { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.tag.warn { background: var(--warn-soft); color: var(--warn); font-weight: 600; }
+.tag.miss { border: 1px solid var(--danger); color: var(--danger); }
+.banner {
+  border-radius: 8px;
+  padding: 12px 14px;
+  font-size: 14.5px;
+}
+.banner.ok { background: var(--rec-soft); border: 1px solid var(--rec); color: var(--rec); }
+.banner.warn { background: var(--warn-soft); border: 1px solid var(--warn); color: var(--warn); }
+.copybox {
+  width: 100%;
+  min-height: 200px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+}
+.hint {
+  font-size: 13px;
+  color: var(--muted);
+}
+@media (max-width: 540px) {
+  .card { padding: 18px 16px; }
+  h1 { font-size: 21px; }
+  .sumitem { grid-template-columns: 28px 1fr; }
+  .sumitem .sumact { grid-column: 2; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="brandrow">
+      <div class="brand">无限天真 · 流程减负与节点合并</div>
+      <div class="round">第 8 轮 · 共 5 题</div>
+    </div>
+    <div class="strip" id="strip" aria-label="题目进度"></div>
+    <div class="stripmeta">
+      <span id="progressText">准备开始</span>
+      <span id="saveText">自动保存在本机浏览器</span>
+    </div>
+  </header>
+
+  <main id="app"></main>
+</div>
+
+<script>
+(function () {
+  var STORAGE_KEY = "wxtz_review_round8_v1";
+
+  var QUESTIONS = [
+    {
+      id: "merge_seal_step",
+      group: "织女完工出货",
+      title: "织女完工交货时，“扫袋码、拍成品照、装袋封签”怎么排最顺手？",
+      scene: "现在的麻烦：织女钩完一件后，要先扫袋码、拍成品照，干等着审核通过（不敢装袋），过了再拿出来装袋贴封签拍第二次照；万一审不过返工，提前扫的袋码还容易作废弄乱。",
+      rec: "A",
+      why: "把“扫袋码”移到装袋那一刻最符合人的直觉：新人/抽检单先裸拍过审，审过再装袋+扫袋码+贴封签拍照，绝不浪费贴纸；而信用分高的老织女抽中免审时，一次拍完成品+封袋直接叫快递，少等一轮、少掏一次手机。",
+      options: [
+        { k: "A", t: "免审单合二为一（一次拍完直接发货）；需审单把“扫袋码”挪到审过装袋时再扫", d: "不降品控、不浪费袋码贴纸，老织女体验极爽。" },
+        { k: "B", t: "所有单子一律拆成两步，只把“扫袋码”挪到审过装袋时（不给老织女合并）", d: "逻辑最统一，但高信用免审单还是要切两次界面。" },
+        { k: "C", t: "维持原方案不变（审前就先扫袋码+拍成品照，审过后再装袋贴封签拍照）", d: "返工时旧袋码需要手动或自动作废重绑。" }
+      ]
+    },
+    {
+      id: "merge_yarn_scan",
+      group: "织女接单体验",
+      title: "织女每次接新单时，还要不要强制扫一遍毛线团条码？",
+      scene: "现在的麻烦：织女收到补色毛线时已经扫过一次条码点亮了色号，派单系统也只给她派她有色的款。如果每次接单（1小时确认窗）还要她满屋找齐毛线团扫码，很多毛线拆完腰封早扔了，很容易因为嫌麻烦或找不到而超时漏单。",
+      rec: "A",
+      why: "收货时扫码已经证明她买的是指定品牌色号了；日常接单改为勾选确认“我手头有齐本单所需色号”即可一键接单，把 1 小时接单摩擦降到最低。万一有人拿错色号钩，成品照盲审一眼就能拦下来。",
+      options: [
+        { k: "A", t: "砍掉接单强制扫码！只在收货点亮色号时扫，接单勾选确认有线即可一键接单", d: "接单速度提升 10 倍，不折腾织女，成品照兜底防用错色。" },
+        { k: "B", t: "只有新人前 3 单接单强制扫码/拍线团合照，老织女接单勾选确认即可", d: "兼顾新人习惯培养和老织女效率，代码多一个判断条件。" },
+        { k: "C", t: "维持原方案：每接一单都必须扫线团条码（无条码拍线团合照兜底）", d: "最严格，但织女日常接单摩擦最大。" }
+      ]
+    },
+    {
+      id: "merge_funnel_entry",
+      group: "织女准入漏斗",
+      title: "入驻漏斗的「第 1 轮小测验」和「第 2 轮传作品照」，要不要合并成一张报名表？",
+      scene: "现在的麻烦：新织女先答完 8 道选择题，过关后再进第二页传 3–6 张作品照，多跳一步就会白白流失一部分嫌麻烦的好织女。",
+      rec: "A",
+      why: "前端合成一张入驻报名页（填城市 + 8 道题 + 传作品照，一次提交），后端照样先毫秒级自动改小测验——测验没过当场让她重答，根本不占粉丝志愿者的审核名额；测验过了作品照自动进盲审池。门槛一分不降，体验从 4 步变 3 步。",
+      options: [
+        { k: "A", t: "合并成一张初筛报名页一次提交（系统先自动判测验，过了作品照再进盲审）", d: "织女体感更顺（3 步入驻），粉丝志愿者工作量完全不增加。" },
+        { k: "B", t: "维持原方案拆成 4 个独立页面（先答题通过，再解锁上传作品照）", d: "答题不过的人连传照片都省了，但通过的人要操作两轮。" }
+      ]
+    },
+    {
+      id: "merge_yarn_ship",
+      group: "线材代发减负",
+      title: "线材发给主供应商代发后，运营还要每周把几百条快递单号导回系统吗？",
+      scene: "现在的麻烦：既然已经定下“织女收到毛线后自己扫条码/拍照确认收货”来点亮色号，如果运营每周还要把供应商发来的快递单号 Excel 再导回系统一次，就是多了一道纯重复的体力活。",
+      rec: "A",
+      why: "导表发给供应商并付款后，后台点一下“本批已发供应商（dispatched）”就完事了，直接等织女扫码收货变 received。供应商回传的单号表格留在微信里备查就行，真有织女说 5 天没收到再翻出来查单号——每周直接砍掉一道手工回导。",
+      options: [
+        { k: "A", t: "合并为“已发供应商(dispatched)”，不强制回导运单号，单号表留微信备查", d: "运营每周省下一整套回导对账活，织女收货扫码直接闭环。" },
+        { k: "B", t: "保留回导单号（exported → shipped），让织女能在小程序里看到毛线物流进度", d: "织女体验稍好一点（能查毛线走到哪了），但运营每周多一次回导动作。" }
+      ]
+    },
+    {
+      id: "merge_sample_reimb",
+      group: "样品邮费报销",
+      title: "新织女试做样品验收通过后，报销的那几块钱邮费统一打到哪？",
+      scene: "现在的麻烦：之前定的是“补进线材池 或 首单结款里报销”。如果留两个口子，代码要写两套分支，会计对账时还要区分这笔邮费到底进了哪里。",
+      rec: "A",
+      why: "新织女刚通过验收，最缺的就是领扩展色毛线的预算池额度。把固定报销额（比如 8 元）统一直接打进她的个人线材预算池，既帮她更快解锁新款，又不用走额外银行转账，财务科目只剩一条干净的线。",
+      options: [
+        { k: "A", t: "统一打入个人线材预算池（LIAB_YARN_POOL），不再二选一", d: "账本最干净、钱留在平台闭环内，新织女刚好拿去领扩展色。" },
+        { k: "B", t: "统一合并到她的首单 14 天结款里一起打银行卡", d: "织女觉得拿到真金白银更直观，但要等她做完首单+签收7天+14天结款才拿到。" },
+        { k: "C", t: "维持原方案，由运营或织女自选进线材池还是首单结款", d: "最灵活，但代码和财务对账多一条分支。" }
+      ]
+    }
+  ];
+
+  var N = QUESTIONS.length;
+  var state = { answers: {}, updatedAt: 0 };
+
+  function load() {
+    try {
+      var raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        var parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === "object" && parsed.answers) state = parsed;
+      }
+    } catch (e) {}
+  }
+
+  function save() {
+    state.updatedAt = Date.now();
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      var el = document.getElementById("saveText");
+      if (el) el.textContent = "已自动保存在本机浏览器";
+    } catch (e) {}
+  }
+
+  function getAns(id) {
+    return state.answers[id] || { choice: "", other: "", note: "", defer: false };
+  }
+
+  function setAns(id, patch) {
+    var cur = getAns(id);
+    state.answers[id] = Object.assign({}, cur, patch);
+    save();
+  }
+
+  function isAnswered(q) {
+    var a = getAns(q.id);
+    if (a.defer) return true;
+    if (!a.choice) return false;
+    if (a.choice === "OTHER") return (a.other || "").trim().length > 0;
+    return true;
+  }
+
+  function countDone() {
+    var c = 0;
+    for (var i = 0; i < N; i++) if (isAnswered(QUESTIONS[i])) c++;
+    return c;
+  }
+
+  function getRoute() {
+    var h = (location.hash || "").replace(/^#/, "");
+    if (!h || h === "start") return { view: "start", idx: -1 };
+    if (h === "summary") return { view: "summary", idx: N };
+    var m = /^q(\d+)$/.exec(h);
+    if (m) {
+      var i = parseInt(m[1], 10) - 1;
+      if (i >= 0 && i < N) return { view: "q", idx: i };
+    }
+    return { view: "start", idx: -1 };
+  }
+
+  function go(hash) {
+    location.hash = "#" + hash;
+  }
+
+  function esc(s) {
+    return String(s || "").replace(/[&<>"']/g, function (ch) {
+      return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch];
+    });
+  }
+
+  function renderStrip(activeIdx) {
+    var strip = document.getElementById("strip");
+    var html = "";
+    for (var i = 0; i < N; i++) {
+      var q = QUESTIONS[i];
+      var a = getAns(q.id);
+      var cls = "seg";
+      if (a.defer) cls += " defer";
+      else if (isAnswered(q)) cls += " done";
+      if (i === activeIdx) cls += " cur";
+      html += '<button type="button" class="' + cls + '" data-act="goq" data-i="' + i + '" title="第 ' + (i + 1) + ' 题：' + esc(q.title) + '"></button>';
+    }
+    strip.innerHTML = html;
+
+    var done = countDone();
+    var pt = document.getElementById("progressText");
+    if (activeIdx >= 0 && activeIdx < N) {
+      pt.textContent = "第 " + (activeIdx + 1) + " / " + N + " 题 · 已完成 " + done + " 题";
+    } else if (activeIdx === N) {
+      pt.textContent = "汇总页 · 已完成 " + done + " / " + N + " 题";
+    } else {
+      pt.textContent = "已完成 " + done + " / " + N + " 题";
+    }
+  }
+
+  function renderStart() {
+    renderStrip(-1);
+    var done = countDone();
+    var app = document.getElementById("app");
+    app.innerHTML =
+      '<section class="card">' +
+        '<div class="eyebrow">一页一题 · 大白话版 · 约 1 分钟</div>' +
+        '<h1>5 处流程减负与节点合并确认</h1>' +
+        '<p style="margin:0;color:var(--muted)">这 5 处合并都不会降低品控，主要是帮你<strong>砍掉织女多余的操作步骤、砍掉运营重复的导表工作、让账本和代码更干净</strong>。逐题拍板，我马上同步进蓝图和状态机图。</p>' +
+        '<div class="cats">' +
+          '<div class="cat"><b>1. 织女完工出货</b><span>免审单合二为一；扫袋码后移</span></div>' +
+          '<div class="cat"><b>2. 织女日常接单</b><span>要不要砍掉每单强制扫毛线条码</span></div>' +
+          '<div class="cat"><b>3. 准入漏斗报名</b><span>小测验 + 传作品照合成一页</span></div>' +
+          '<div class="cat"><b>4–5. 线材与报销</b><span>砍掉单号回导；样品邮费统一进线材池</span></div>' +
+        '</div>' +
+        '<div class="nav">' +
+          '<span class="hint">支持键盘 ← → 方向键翻页</span>' +
+          '<div class="navr">' +
+            (done > 0 ? '<button type="button" class="btn" data-act="gosum">直接看汇总</button>' : '') +
+            '<button type="button" class="btn primary" data-act="goq" data-i="0">' + (done > 0 ? '继续答题' : '开始第 1 题') + ' →</button>' +
+          '</div>' +
+        '</div>' +
+      '</section>';
+  }
+
+  function renderQuestion(i) {
+    renderStrip(i);
+    var q = QUESTIONS[i];
+    var a = getAns(q.id);
+    var optsHtml = "";
+
+    for (var j = 0; j < q.options.length; j++) {
+      var o = q.options[j];
+      var isRec = o.k === q.rec;
+      var isSel = a.choice === o.k;
+      optsHtml +=
+        '<div class="optwrap">' +
+          '<label class="opt' + (isSel ? ' sel' : '') + (isRec ? ' hasWhy' : '') + '">' +
+            '<input type="radio" name="opt" value="' + o.k + '"' + (isSel ? ' checked' : '') + '>' +
+            '<span class="badge">' + o.k + '</span>' +
+            '<span>' +
+              '<span class="otitle">' + esc(o.t) + (isRec ? ' <span class="pill">推荐</span>' : '') + '</span>' +
+              '<span class="odesc">' + esc(o.d) + '</span>' +
+            '</span>' +
+          '</label>' +
+          (isRec ? '<div class="why"><div class="lab">为什么推荐这个？</div><p>' + esc(q.why) + '</p></div>' : '') +
+        '</div>';
+    }
+
+    var isOther = a.choice === "OTHER";
+    optsHtml +=
+      '<div class="optwrap">' +
+        '<label class="opt' + (isOther ? ' sel' : '') + '">' +
+          '<input type="radio" name="opt" value="OTHER"' + (isOther ? ' checked' : '') + '>' +
+          '<span class="badge">自</span>' +
+          '<span>' +
+            '<span class="otitle">其他想法（我自己写）</span>' +
+            '<span class="odesc">按我下面写的来</span>' +
+          '</span>' +
+        '</label>' +
+      '</div>';
+
+    var app = document.getElementById("app");
+    app.innerHTML =
+      '<section class="card">' +
+        '<div class="eyebrow">第 ' + (i + 1) + ' 题 / 共 ' + N + ' 题 · ' + esc(q.group) + '</div>' +
+        '<h1>' + esc(q.title) + '</h1>' +
+        '<div class="scene">' +
+          '<div class="lab">真实场景与痛点</div>' +
+          '<p>' + esc(q.scene) + '</p>' +
+        '</div>' +
+        '<div class="opts">' + optsHtml + '</div>' +
+        (isOther
+          ? '<div class="field"><span class="lab">写下你的做法：</span><textarea id="otherText" data-field="other" placeholder="直接用大白话写就行…">' + esc(a.other) + '</textarea></div>'
+          : '') +
+        '<div class="field">' +
+          '<span class="lab">补充备注（选填）：</span>' +
+          '<textarea data-field="note" placeholder="没有补充可以空着">' + esc(a.note) + '</textarea>' +
+        '</div>' +
+        '<label class="defer">' +
+          '<input type="checkbox" id="deferBox"' + (a.defer ? ' checked' : '') + '>' +
+          '<span>这题先不定</span>' +
+        '</label>' +
+        '<div class="nav">' +
+          '<button type="button" class="btn" data-act="' + (i === 0 ? 'gostart' : 'goq') + '" data-i="' + (i - 1) + '">← 上一题</button>' +
+          '<div class="navr">' +
+            '<button type="button" class="btn recbtn" data-act="userec">采纳推荐（' + q.rec + '）并下一题</button>' +
+            (i === N - 1
+              ? '<button type="button" class="btn primary" data-act="gosum">去汇总页 →</button>'
+              : '<button type="button" class="btn primary" data-act="goq" data-i="' + (i + 1) + '">下一题 →</button>') +
+          '</div>' +
+        '</div>' +
+      '</section>';
+  }
+
+  function exportText() {
+    var lines = ["【无限天真 · 第 8 轮流程优化与节点合并结果】", ""];
+    for (var i = 0; i < N; i++) {
+      var q = QUESTIONS[i];
+      var a = getAns(q.id);
+      var ansStr = "未选";
+      if (a.defer) {
+        ansStr = "先不定";
+      } else if (a.choice === "OTHER") {
+        ansStr = "自定义：" + (a.other || "").trim();
+      } else if (a.choice) {
+        var found = q.options.find(function (x) { return x.k === a.choice; });
+        ansStr = a.choice + "：" + (found ? found.t : "");
+        if (a.choice === q.rec) ansStr += "（推荐）";
+      }
+      lines.push((i + 1) + ". " + q.title);
+      lines.push("   决定：" + ansStr);
+      if ((a.note || "").trim()) lines.push("   备注：" + a.note.trim());
+    }
+    return lines.join("\n");
+  }
+
+  function renderSummary() {
+    renderStrip(N);
+    var done = countDone();
+    var listHtml = "";
+    for (var i = 0; i < N; i++) {
+      var q = QUESTIONS[i];
+      var a = getAns(q.id);
+      var badge = '<span class="tag miss">未选</span>';
+      var ansText = "还没做决定";
+      if (a.defer) {
+        badge = '<span class="tag warn">先不定</span>';
+        ansText = "留到后续再定";
+      } else if (a.choice === "OTHER") {
+        badge = '<span class="tag ok">自定义</span>';
+        ansText = (a.other || "").trim() || "（未填内容）";
+      } else if (a.choice) {
+        var found = q.options.find(function (x) { return x.k === a.choice; });
+        badge = '<span class="tag ok">选 ' + a.choice + (a.choice === q.rec ? ' · 推荐' : '') + '</span>';
+        ansText = found ? found.t : a.choice;
+      }
+      listHtml +=
+        '<div class="sumitem">' +
+          '<div class="sumno">#' + (i + 1) + '</div>' +
+          '<div>' +
+            '<div class="sumq">' + esc(q.title) + '</div>' +
+            '<div class="sumans">' + badge + esc(ansText) + '</div>' +
+            ((a.note || "").trim() ? '<div class="sumnote">备注：' + esc(a.note.trim()) + '</div>' : '') +
+          '</div>' +
+          '<div class="sumact"><button type="button" class="btn small" data-act="goq" data-i="' + i + '">修改</button></div>' +
+        '</div>';
+    }
+
+    var app = document.getElementById("app");
+    app.innerHTML =
+      '<section class="card">' +
+        '<div class="eyebrow">汇总与导出</div>' +
+        '<h1>确认你的 5 项流程优化</h1>' +
+        (done < N
+          ? '<div class="banner warn">还有 ' + (N - done) + ' 题没选。可以点右侧“修改”补齐，或直接一键填成推荐。</div>'
+          : '<div class="banner ok">5 题已全部确认！点下方“复制全部答案”贴回对话，我立刻帮你更新技术蓝图和交互状态图。</div>') +
+        '<div class="sumlist">' + listHtml + '</div>' +
+        '<div class="nav">' +
+          '<button type="button" class="btn" data-act="goq" data-i="' + (N - 1) + '">← 返回第 5 题</button>' +
+          '<div class="navr">' +
+            '<button type="button" class="btn" data-act="allrec">把未选题全部填成推荐</button>' +
+            '<button type="button" class="btn primary" data-act="copy">复制全部答案</button>' +
+          '</div>' +
+        '</div>' +
+        '<div id="copyArea"></div>' +
+      '</section>';
+  }
+
+  function render() {
+    var r = getRoute();
+    if (r.view === "start") renderStart();
+    else if (r.view === "summary") renderSummary();
+    else renderQuestion(r.idx);
+    window.scrollTo({ top: 0, behavior: "instant" });
+  }
+
+  document.addEventListener("click", function (e) {
+    var btn = e.target.closest("[data-act]");
+    if (!btn) return;
+    var act = btn.getAttribute("data-act");
+    if (act === "goq") {
+      go("q" + (parseInt(btn.getAttribute("data-i"), 10) + 1));
+    } else if (act === "gostart") {
+      go("start");
+    } else if (act === "gosum") {
+      go("summary");
+    } else if (act === "userec") {
+      var r = getRoute();
+      if (r.view === "q") {
+        var q = QUESTIONS[r.idx];
+        setAns(q.id, { choice: q.rec, defer: false });
+        go(r.idx === N - 1 ? "summary" : "q" + (r.idx + 2));
+      }
+    } else if (act === "allrec") {
+      for (var i = 0; i < N; i++) {
+        var qi = QUESTIONS[i];
+        if (!isAnswered(qi)) setAns(qi.id, { choice: qi.rec, defer: false });
+      }
+      render();
+    } else if (act === "copy") {
+      var txt = exportText();
+      var area = document.getElementById("copyArea");
+      function showBox(msg) {
+        area.innerHTML =
+          '<div class="banner ' + (msg ? 'ok' : 'warn') + '" style="margin-top:8px">' +
+            (msg || '浏览器限制自动复制，请全选下方文字手动复制发给我：') +
+          '</div>' +
+          '<div class="field" style="margin-top:8px"><textarea class="copybox" id="copyBox" readonly></textarea></div>';
+        var b = document.getElementById("copyBox");
+        b.value = txt;
+        if (!msg) { b.focus(); b.select(); }
+      }
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(txt).then(function () {
+          showBox("已复制到剪贴板！直接粘贴回对话发给我即可。");
+        }, function () { showBox(""); });
+      } else {
+        showBox("");
+      }
+    }
+  });
+
+  document.getElementById("app").addEventListener("change", function (e) {
+    var r = getRoute();
+    if (r.view !== "q") return;
+    var q = QUESTIONS[r.idx];
+    if (e.target.name === "opt") {
+      setAns(q.id, { choice: e.target.value, defer: false });
+      renderQuestion(r.idx);
+      if (e.target.value === "OTHER") {
+        var ta = document.getElementById("otherText");
+        if (ta) ta.focus();
+      }
+    } else if (e.target.id === "deferBox") {
+      setAns(q.id, { defer: e.target.checked });
+      renderStrip(r.idx);
+    }
+  });
+
+  document.getElementById("app").addEventListener("input", function (e) {
+    var r = getRoute();
+    if (r.view !== "q") return;
+    var q = QUESTIONS[r.idx];
+    var f = e.target.getAttribute("data-field");
+    if (f === "other") {
+      setAns(q.id, { other: e.target.value });
+      renderStrip(r.idx);
+    } else if (f === "note") {
+      setAns(q.id, { note: e.target.value });
+    }
+  });
+
+  document.addEventListener("keydown", function (e) {
+    var tag = (e.target.tagName || "").toLowerCase();
+    if (tag === "textarea" || tag === "input" || e.metaKey || e.ctrlKey || e.altKey) return;
+    var r = getRoute();
+    if (r.view !== "q") return;
+    if (e.key === "ArrowRight") go(r.idx === N - 1 ? "summary" : "q" + (r.idx + 2));
+    if (e.key === "ArrowLeft") go(r.idx === 0 ? "start" : "q" + r.idx);
+  });
+
+  window.addEventListener("hashchange", render);
+  load();
+  render();
+})();
+</script>
+</body>
+</html>

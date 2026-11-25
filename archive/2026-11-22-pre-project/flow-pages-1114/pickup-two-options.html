@@ -1,0 +1,239 @@
+<title>预约上门两种方案</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: 两张同构的四泳道流程图上下排列(织女 / 小程序后台 / 抖店 / 京东),下面一张对比表和决策顺序 */
+:root {
+  --bg: #f6f7f5;
+  --fg: #1d2421;
+  --muted: #5d6963;
+  --surface: #ffffff;
+  --line: #8a948e;
+  --lane: #e6ebe8;
+  --warn: #b25b00;
+  --warn-bg: #fff3e2;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #141a17; --fg: #e7ece9; --muted: #9aa6a0; --surface: #1d2622;
+    --line: #6f7b75; --lane: #25302b; --warn: #f0a24a; --warn-bg: #33281a;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #141a17; --fg: #e7ece9; --muted: #9aa6a0; --surface: #1d2622;
+  --line: #6f7b75; --lane: #25302b; --warn: #f0a24a; --warn-bg: #33281a;
+  color-scheme: dark;
+}
+body {
+  background: var(--bg); color: var(--fg);
+  font-family: -apple-system, "PingFang SC", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+  line-height: 1.6;
+  padding-block: 28px 48px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+main { max-width: 860px; margin: 0 auto; }
+h1 { font-size: 24px; margin: 0 0 6px; text-wrap: balance; }
+h2 { font-size: 18px; margin: 36px 0 4px; text-wrap: balance; }
+h3 { font-size: 16px; margin: 28px 0 8px; }
+.lead { color: var(--muted); margin: 0 0 12px; font-size: 15px; }
+.legend { display: flex; flex-wrap: wrap; gap: 8px 18px; margin: 0 0 6px; font-size: 13px; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.sw { width: 22px; height: 14px; border-radius: 3px; border: 1.5px solid var(--line); background: var(--surface); }
+.sw.w { border-color: var(--warn); border-style: dashed; background: var(--warn-bg); }
+figure { margin: 0; }
+.scroll { overflow-x: auto; }
+svg { display: block; width: 100%; min-width: 640px; height: auto; color: var(--fg); }
+figcaption { color: var(--muted); font-size: 13px; margin-top: 10px; }
+.laneBg { fill: var(--lane); opacity: 0.45; }
+.laneHd { fill: var(--lane); }
+.box { fill: var(--surface); stroke: var(--line); stroke-width: 1.3; }
+.boxdash { fill: var(--warn-bg); stroke: var(--warn); stroke-width: 1.3; stroke-dasharray: 5 4; }
+.t { font-size: 14px; font-weight: 600; fill: var(--fg); }
+.s { font-size: 11.5px; fill: var(--muted); }
+.lb { font-size: 11.5px; fill: var(--muted); }
+.lbw { font-size: 11.5px; fill: var(--warn); }
+.ln { stroke: var(--fg); stroke-width: 1.4; fill: none; }
+.lnd { stroke: var(--warn); stroke-width: 1.4; fill: none; stroke-dasharray: 5 4; }
+.arw { fill: var(--fg); }
+.arwd { fill: var(--warn); }
+.tablewrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; min-width: 600px; font-size: 14px; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { color: var(--muted); font-weight: 600; font-size: 13px; white-space: nowrap; }
+ol, ul { margin: 0; padding-left: 22px; }
+li { margin-bottom: 6px; }
+.src { color: var(--muted); font-size: 13px; margin-top: 24px; }
+</style>
+
+<main>
+  <h1>预约上门两种方案</h1>
+  <p class="lead">取号只拿到单号,不会叫快递员。要让京东上门,有两种做法:取号时附上取件时间段,或者另调京东下单接口。图里只画「一键寄件」这一段。</p>
+  <div class="legend">
+    <span><i class="sw"></i>有依据</span>
+    <span><i class="sw w"></i>未证实,待确认</span>
+  </div>
+
+  <h2>方案一:取号时带取件时间段</h2>
+  <p class="lead">在取号接口的 <code>sender_fetch_time</code> 里填时间段,期望抖店把预约一并交给京东。</p>
+  <figure>
+    <div class="scroll">
+    <svg viewBox="0 0 790 480" role="img" aria-label="方案一:云函数取最新密文,取号请求里带取件时间段,抖店向京东取号并期望同时预约,京东分配单号并派快递员;全程不需要收件明文。">
+      <defs>
+        <marker id="ar1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="arw"/></marker>
+        <marker id="ad1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="arwd"/></marker>
+      </defs>
+      <rect x="12" y="34" width="172" height="436" rx="6" class="laneBg"/>
+      <rect x="207" y="34" width="172" height="436" rx="6" class="laneBg"/>
+      <rect x="402" y="34" width="172" height="436" rx="6" class="laneBg"/>
+      <rect x="597" y="34" width="172" height="436" rx="6" class="laneBg"/>
+      <rect x="12" y="6" width="172" height="24" rx="4" class="laneHd"/><text x="98" y="23" text-anchor="middle" class="t">织女(小程序)</text>
+      <rect x="207" y="6" width="172" height="24" rx="4" class="laneHd"/><text x="293" y="23" text-anchor="middle" class="t">小程序后台</text>
+      <rect x="402" y="6" width="172" height="24" rx="4" class="laneHd"/><text x="488" y="23" text-anchor="middle" class="t">抖店后台 / 接口</text>
+      <rect x="597" y="6" width="172" height="24" rx="4" class="laneHd"/><text x="683" y="23" text-anchor="middle" class="t">京东物流</text>
+
+      <rect x="20" y="40" width="156" height="52" rx="6" class="box"/>
+      <text x="98" y="62" text-anchor="middle" class="t">点「一键寄件」</text><text x="98" y="80" text-anchor="middle" class="s">选取件时段</text>
+      <rect x="215" y="40" width="156" height="52" rx="6" class="box"/>
+      <text x="293" y="62" text-anchor="middle" class="t">云函数处理</text><text x="293" y="80" text-anchor="middle" class="s">查织女登记地址</text>
+      <line x1="176" y1="66" x2="213" y2="66" class="ln" marker-end="url(#ar1)"/>
+
+      <rect x="215" y="112" width="156" height="52" rx="6" class="box"/>
+      <text x="293" y="134" text-anchor="middle" class="t">取最新密文</text><text x="293" y="152" text-anchor="middle" class="s">该订单自己的</text>
+      <rect x="410" y="112" width="156" height="52" rx="6" class="box"/>
+      <text x="488" y="134" text-anchor="middle" class="t">orderDetail</text><text x="488" y="152" text-anchor="middle" class="s">返回收件密文</text>
+      <line x1="293" y1="92" x2="293" y2="110" class="ln" marker-end="url(#ar1)"/>
+      <line x1="371" y1="130" x2="408" y2="130" class="ln" marker-end="url(#ar1)"/>
+      <line x1="408" y1="150" x2="373" y2="150" class="ln" marker-end="url(#ar1)"/>
+
+      <rect x="215" y="184" width="156" height="52" rx="6" class="box"/>
+      <text x="293" y="206" text-anchor="middle" class="t">取号请求</text><text x="293" y="224" text-anchor="middle" class="s">地址+密文+时段</text>
+      <rect x="410" y="184" width="156" height="52" rx="6" class="box"/>
+      <text x="488" y="206" text-anchor="middle" class="t">校验后取号</text><text x="488" y="224" text-anchor="middle" class="s">带取件时间段</text>
+      <rect x="605" y="184" width="156" height="52" rx="6" class="boxdash"/>
+      <text x="683" y="206" text-anchor="middle" class="t">分配单号并预约</text><text x="683" y="224" text-anchor="middle" class="s">是否预约未证实</text>
+      <line x1="293" y1="164" x2="293" y2="182" class="ln" marker-end="url(#ar1)"/>
+      <line x1="371" y1="202" x2="408" y2="202" class="ln" marker-end="url(#ar1)"/>
+      <line x1="408" y1="222" x2="373" y2="222" class="ln" marker-end="url(#ar1)"/>
+      <line x1="566" y1="202" x2="603" y2="202" class="lnd" marker-end="url(#ad1)"/>
+      <line x1="603" y1="222" x2="568" y2="222" class="lnd" marker-end="url(#ad1)"/>
+
+      <rect x="215" y="256" width="156" height="52" rx="6" class="box"/>
+      <text x="293" y="278" text-anchor="middle" class="t">收到运单号</text><text x="293" y="296" text-anchor="middle" class="s">和预约结果</text>
+      <line x1="293" y1="236" x2="293" y2="254" class="ln" marker-end="url(#ar1)"/>
+
+      <rect x="215" y="328" width="156" height="52" rx="6" class="boxdash"/>
+      <text x="293" y="350" text-anchor="middle" class="t">取面单打印数据</text><text x="293" y="368" text-anchor="middle" class="s">京东:方式待定</text>
+      <rect x="20" y="328" width="156" height="52" rx="6" class="boxdash"/>
+      <text x="98" y="350" text-anchor="middle" class="t">织女打印贴单</text><text x="98" y="368" text-anchor="middle" class="s">方式待定</text>
+      <line x1="293" y1="308" x2="293" y2="326" class="lnd" marker-end="url(#ad1)"/>
+      <line x1="215" y1="354" x2="178" y2="354" class="lnd" marker-end="url(#ad1)"/>
+
+      <rect x="605" y="400" width="156" height="52" rx="6" class="boxdash"/>
+      <text x="683" y="422" text-anchor="middle" class="t">快递员上门</text><text x="683" y="440" text-anchor="middle" class="s">按取件时段</text>
+      <line x1="683" y1="236" x2="683" y2="398" class="lnd" marker-end="url(#ad1)"/>
+      <text x="693" y="320" class="lbw">预约生效后派单</text>
+    </svg>
+    </div>
+    <figcaption>一次取号请求完成两件事,链路最短。全程只用密文,不调用解密接口。前提是 <code>sender_fetch_time</code> 真的会向京东发起预约,目前没有证实。</figcaption>
+  </figure>
+
+  <h2>方案二:京东下单接口</h2>
+  <p class="lead">取号之后,云函数再调京东自己的下单接口,用抖店取到的单号做「带单号下单」。</p>
+  <figure>
+    <div class="scroll">
+    <svg viewBox="0 0 790 550" role="img" aria-label="方案二:先用抖店取号拿到京东单号,再解密收件地址,调用京东下单接口带单号下单并指定取件时段,京东接单派快递员;需要明文和解密额度,且带单号下单是否被接受未证实。">
+      <defs>
+        <marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="arw"/></marker>
+        <marker id="ad2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="arwd"/></marker>
+      </defs>
+      <rect x="12" y="34" width="172" height="506" rx="6" class="laneBg"/>
+      <rect x="207" y="34" width="172" height="506" rx="6" class="laneBg"/>
+      <rect x="402" y="34" width="172" height="506" rx="6" class="laneBg"/>
+      <rect x="597" y="34" width="172" height="506" rx="6" class="laneBg"/>
+      <rect x="12" y="6" width="172" height="24" rx="4" class="laneHd"/><text x="98" y="23" text-anchor="middle" class="t">织女(小程序)</text>
+      <rect x="207" y="6" width="172" height="24" rx="4" class="laneHd"/><text x="293" y="23" text-anchor="middle" class="t">小程序后台</text>
+      <rect x="402" y="6" width="172" height="24" rx="4" class="laneHd"/><text x="488" y="23" text-anchor="middle" class="t">抖店后台 / 接口</text>
+      <rect x="597" y="6" width="172" height="24" rx="4" class="laneHd"/><text x="683" y="23" text-anchor="middle" class="t">京东物流</text>
+
+      <rect x="20" y="40" width="156" height="52" rx="6" class="box"/>
+      <text x="98" y="62" text-anchor="middle" class="t">点「一键寄件」</text><text x="98" y="80" text-anchor="middle" class="s">选取件时段</text>
+      <rect x="215" y="40" width="156" height="52" rx="6" class="box"/>
+      <text x="293" y="62" text-anchor="middle" class="t">云函数处理</text><text x="293" y="80" text-anchor="middle" class="s">查织女登记地址</text>
+      <line x1="176" y1="66" x2="213" y2="66" class="ln" marker-end="url(#ar2)"/>
+
+      <rect x="215" y="112" width="156" height="52" rx="6" class="box"/>
+      <text x="293" y="134" text-anchor="middle" class="t">取最新密文</text><text x="293" y="152" text-anchor="middle" class="s">该订单自己的</text>
+      <rect x="410" y="112" width="156" height="52" rx="6" class="box"/>
+      <text x="488" y="134" text-anchor="middle" class="t">orderDetail</text><text x="488" y="152" text-anchor="middle" class="s">返回收件密文</text>
+      <line x1="293" y1="92" x2="293" y2="110" class="ln" marker-end="url(#ar2)"/>
+      <line x1="371" y1="130" x2="408" y2="130" class="ln" marker-end="url(#ar2)"/>
+      <line x1="408" y1="150" x2="373" y2="150" class="ln" marker-end="url(#ar2)"/>
+
+      <rect x="215" y="184" width="156" height="52" rx="6" class="box"/>
+      <text x="293" y="206" text-anchor="middle" class="t">取号请求</text><text x="293" y="224" text-anchor="middle" class="s">地址+密文</text>
+      <rect x="410" y="184" width="156" height="52" rx="6" class="box"/>
+      <text x="488" y="206" text-anchor="middle" class="t">校验后取号</text><text x="488" y="224" text-anchor="middle" class="s">newCreateOrder</text>
+      <rect x="605" y="184" width="156" height="52" rx="6" class="box"/>
+      <text x="683" y="206" text-anchor="middle" class="t">分配运单号</text><text x="683" y="224" text-anchor="middle" class="s">记入月结</text>
+      <line x1="293" y1="164" x2="293" y2="182" class="ln" marker-end="url(#ar2)"/>
+      <line x1="371" y1="202" x2="408" y2="202" class="ln" marker-end="url(#ar2)"/>
+      <line x1="408" y1="222" x2="373" y2="222" class="ln" marker-end="url(#ar2)"/>
+      <line x1="566" y1="202" x2="603" y2="202" class="ln" marker-end="url(#ar2)"/>
+      <line x1="603" y1="222" x2="568" y2="222" class="ln" marker-end="url(#ar2)"/>
+
+      <rect x="215" y="256" width="156" height="52" rx="6" class="box"/>
+      <text x="293" y="278" text-anchor="middle" class="t">收到运单号</text><text x="293" y="296" text-anchor="middle" class="s">ebill_infos</text>
+      <line x1="293" y1="236" x2="293" y2="254" class="ln" marker-end="url(#ar2)"/>
+
+      <rect x="215" y="328" width="156" height="52" rx="6" class="boxdash"/>
+      <text x="293" y="350" text-anchor="middle" class="t">取收件明文</text><text x="293" y="368" text-anchor="middle" class="s">只在内存</text>
+      <rect x="410" y="328" width="156" height="52" rx="6" class="boxdash"/>
+      <text x="488" y="350" text-anchor="middle" class="t">batchDecrypt</text><text x="488" y="368" text-anchor="middle" class="s">有额度、不落库</text>
+      <line x1="293" y1="308" x2="293" y2="326" class="lnd" marker-end="url(#ad2)"/>
+      <line x1="371" y1="346" x2="408" y2="346" class="lnd" marker-end="url(#ad2)"/>
+      <line x1="408" y1="366" x2="373" y2="366" class="lnd" marker-end="url(#ad2)"/>
+
+      <rect x="215" y="400" width="156" height="52" rx="6" class="boxdash"/>
+      <text x="293" y="422" text-anchor="middle" class="t">京东下单</text><text x="293" y="440" text-anchor="middle" class="s">带单号、取件时段</text>
+      <rect x="605" y="400" width="156" height="52" rx="6" class="boxdash"/>
+      <text x="683" y="422" text-anchor="middle" class="t">接单派快递员</text><text x="683" y="440" text-anchor="middle" class="s">带单号能否接受</text>
+      <line x1="293" y1="380" x2="293" y2="398" class="lnd" marker-end="url(#ad2)"/>
+      <line x1="371" y1="426" x2="603" y2="426" class="lnd" marker-end="url(#ad2)"/>
+      <text x="488" y="418" text-anchor="middle" class="lbw">织女地址 + 收件明文</text>
+
+      <rect x="215" y="472" width="156" height="52" rx="6" class="boxdash"/>
+      <text x="293" y="494" text-anchor="middle" class="t">取面单打印数据</text><text x="293" y="512" text-anchor="middle" class="s">京东:方式待定</text>
+      <rect x="20" y="472" width="156" height="52" rx="6" class="boxdash"/>
+      <text x="98" y="494" text-anchor="middle" class="t">织女打印贴单</text><text x="98" y="512" text-anchor="middle" class="s">方式待定</text>
+      <line x1="293" y1="452" x2="293" y2="470" class="lnd" marker-end="url(#ad2)"/>
+      <line x1="215" y1="498" x2="178" y2="498" class="lnd" marker-end="url(#ad2)"/>
+    </svg>
+    </div>
+    <figcaption>多了解密和一次京东调用,所以需要明文和解密额度,还要承担京东是否接受抖店单号的风险。京东下单接口要求收件人姓名和完整地址必填。</figcaption>
+  </figure>
+
+  <h2>两种方案对比</h2>
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th></th><th>方案一:取号带时段</th><th>方案二:京东下单接口</th></tr></thead>
+    <tbody>
+      <tr><th>调用次数</th><td>取号一次</td><td>取号 + 京东下单两次</td></tr>
+      <tr><th>收件明文</th><td>不需要</td><td>需要,要解密</td></tr>
+      <tr><th>解密额度</th><td>不占用</td><td>占用,受解密率和额度限制</td></tr>
+      <tr><th>依赖的未证实点</th><td><code>sender_fetch_time</code> 是否向京东发起预约</td><td>京东能否接受抖店单号做「带单号下单」;京东预约时是否允许收件地址只到省市区</td></tr>
+      <tr><th>需要的资质</th><td>抖店权限包</td><td>抖店权限包 + 京东开放平台接入(要软著、客户编码)</td></tr>
+      <tr><th>出问题时</th><td>预约没生效,织女要自己联系站点</td><td>单号冲突或被拒,要重新取号再下单</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3>建议的确认顺序</h3>
+  <ol>
+    <li>先向抖店工单确认 <code>sender_fetch_time</code>:哪些快递支持,京东是否支持,填了之后取号时是否真的向京东预约。这一条决定走方案一还是方案二。</li>
+    <li>如果不支持,再问京东销售:抖店单号能否「带单号下单」,收件地址能否只填省市区。如果只填省市区可行,方案二也可以不解密。</li>
+    <li>两个方案的打印方式都没解决,单独问京东:京东云打印能否用于抖店取到的单号。</li>
+  </ol>
+
+  <p class="src">依据:抖店开放平台 <code>newCreateOrder</code> 接口文档,京东物流开放平台下单接口文档,抖店智能客服回复(<code>sender_fetch_time</code> 一问未得到有效回答)。查阅日期 2026-11-14。没有实测。</p>
+</main>

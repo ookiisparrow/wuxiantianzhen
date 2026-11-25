@@ -1,0 +1,628 @@
+<title>运行与经济</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&family=Noto+Serif+SC:wght@600;700&display=swap">
+<style>
+/* Layout: 一页一题的单栏问卷；顶部是 15 段进度条，题目卡居中，推荐原因贴在被推荐的选项下方。 */
+:root {
+  --bg: #f3f5f2;
+  --surface: #ffffff;
+  --ink: #1d2623;
+  --muted: #5b6862;
+  --line: #d8ded9;
+  --accent: #2f5d8a;
+  --accent-ink: #ffffff;
+  --accent-soft: #e4edf6;
+  --rec: #2a7a58;
+  --rec-soft: #e2f1ea;
+  --warn: #9a6a12;
+  --warn-soft: #f6ecd3;
+  --danger: #a33a3a;
+  --font-body: "Noto Sans SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
+  --font-display: "Noto Serif SC", "Songti SC", "STSong", serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #111715; --surface: #1a2220; --ink: #e5ebe8; --muted: #9aa7a1; --line: #2d3935;
+    --accent: #7fb0e0; --accent-ink: #0f1a24; --accent-soft: #1d2d3d;
+    --rec: #6cc59d; --rec-soft: #18302a; --warn: #e0b45c; --warn-soft: #34291a; --danger: #e08585;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #111715; --surface: #1a2220; --ink: #e5ebe8; --muted: #9aa7a1; --line: #2d3935;
+  --accent: #7fb0e0; --accent-ink: #0f1a24; --accent-soft: #1d2d3d;
+  --rec: #6cc59d; --rec-soft: #18302a; --warn: #e0b45c; --warn-soft: #34291a; --danger: #e08585;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 16px; line-height: 1.7;
+  padding-block: 20px 56px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.wrap { max-width: 740px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+header.top { display: flex; flex-direction: column; gap: 10px; }
+.brandrow { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.brand { font-family: var(--font-display); font-weight: 700; font-size: 18px; letter-spacing: .02em; }
+.round { font-size: 13px; color: var(--muted); }
+.strip { display: grid; grid-template-columns: repeat(9, 1fr); gap: 4px; }
+.seg { height: 10px; border-radius: 3px; background: var(--line); border: 0; padding: 0; cursor: pointer; }
+.seg.done { background: var(--accent); }
+.seg.defer { background: var(--warn); }
+.seg.cur { outline: 2px solid var(--ink); outline-offset: 2px; }
+.seg:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.stripmeta { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; color: var(--muted); flex-wrap: wrap; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 24px; display: flex; flex-direction: column; gap: 18px; }
+.eyebrow { font-size: 12px; letter-spacing: .08em; color: var(--muted); }
+h1 { font-family: var(--font-display); font-size: 25px; line-height: 1.35; margin: 0; text-wrap: balance; }
+h2 { font-family: var(--font-display); font-size: 18px; margin: 0; }
+.ctx { background: var(--bg); border-radius: 8px; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; font-size: 15px; }
+.ctx p { margin: 0; }
+.ctx .lab { font-size: 12px; letter-spacing: .08em; color: var(--muted); }
+.src { font-size: 13px; color: var(--muted); }
+.opts { display: flex; flex-direction: column; gap: 10px; }
+.optwrap { display: flex; flex-direction: column; gap: 0; }
+.opt { display: grid; grid-template-columns: 28px 1fr; gap: 12px; padding: 14px; border: 1px solid var(--line); border-radius: 8px; cursor: pointer; background: var(--surface); }
+.opt:hover { border-color: var(--accent); }
+.opt.sel { border-color: var(--accent); background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent); }
+.opt.hasWhy { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+.opt input { position: absolute; opacity: 0; pointer-events: none; }
+.opt:has(input:focus-visible) { outline: 2px solid var(--ink); outline-offset: 2px; }
+.badge { width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--line); display: grid; place-items: center; font-size: 13px; font-weight: 700; color: var(--muted); }
+.opt.sel .badge { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.otitle { font-weight: 700; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.odesc { display: block; color: var(--muted); font-size: 15px; margin-top: 2px; }
+.pill { font-size: 12px; font-weight: 700; padding: 1px 8px; border-radius: 99px; background: var(--rec-soft); color: var(--rec); }
+.why { border: 1px solid var(--rec); border-top: 0; background: var(--rec-soft); border-radius: 0 0 8px 8px; padding: 12px 14px; font-size: 15px; display: flex; flex-direction: column; gap: 8px; }
+.why .lab { font-size: 12px; letter-spacing: .08em; color: var(--rec); font-weight: 700; }
+.why p { margin: 0; }
+button, .btn { font: inherit; }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 10px 18px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); cursor: pointer; text-decoration: none; min-height: 44px; }
+.btn:hover { border-color: var(--accent); }
+.btn:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
+.btn.small { min-height: 36px; padding: 6px 12px; font-size: 14px; }
+.btn[disabled] { opacity: .5; cursor: not-allowed; }
+.link { background: none; border: 0; padding: 0; color: var(--accent); cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+textarea { width: 100%; font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; min-height: 84px; resize: vertical; line-height: 1.6; }
+textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.field { display: flex; flex-direction: column; gap: 6px; }
+.field label, .field .lab { font-size: 14px; color: var(--muted); }
+.defer { display: flex; align-items: center; gap: 10px; font-size: 15px; }
+.defer input { width: 20px; height: 20px; accent-color: var(--warn); }
+.nav { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; align-items: center; }
+.navr { display: flex; gap: 10px; flex-wrap: wrap; }
+.state { font-size: 13px; color: var(--muted); }
+.state.fail { color: var(--danger); }
+.cats { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px; }
+.cat { border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; font-size: 15px; }
+.cat b { display: block; }
+.cat span { color: var(--muted); font-size: 14px; }
+.sumlist { display: flex; flex-direction: column; gap: 0; }
+.sumitem { display: grid; grid-template-columns: 34px 1fr auto; gap: 12px; padding: 14px 0; border-top: 1px solid var(--line); }
+.sumitem:first-child { border-top: 0; }
+.sumno { font-family: var(--font-display); font-weight: 700; color: var(--muted); }
+.sumq { font-weight: 700; }
+.sumans { font-size: 15px; margin-top: 2px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.sumnote { font-size: 14px; color: var(--muted); margin-top: 2px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.tag { font-size: 12px; padding: 1px 8px; border-radius: 99px; border: 1px solid var(--line); color: var(--muted); }
+.tag.warn { color: var(--warn); border-color: var(--warn); background: var(--warn-soft); }
+.tag.miss { color: var(--danger); border-color: var(--danger); }
+.banner { border-radius: 8px; padding: 12px 14px; font-size: 15px; }
+.banner.ok { background: var(--rec-soft); border: 1px solid var(--rec); }
+.banner.warn { background: var(--warn-soft); border: 1px solid var(--warn); }
+.copybox { width: 100%; min-height: 160px; font-size: 13px; }
+@media (max-width: 520px) {
+  .card { padding: 18px 16px; }
+  h1 { font-size: 22px; }
+  .sumitem { grid-template-columns: 28px 1fr; }
+  .sumitem .sumact { grid-column: 2; }
+}
+@media (prefers-reduced-motion: no-preference) { .opt, .btn { transition: border-color .12s, background .12s; } }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div class="brandrow">
+      <div class="brand">无限天真 · 经济、小程序运行与团队</div>
+      <div class="round" id="roundName"></div>
+    </div>
+    <div class="strip" id="strip" role="navigation" aria-label="题目进度"></div>
+    <div class="stripmeta"><span id="progressText"></span><span class="state" id="saveState"></span></div>
+  </header>
+  <main id="app"></main>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  var ROUND = { id: "r6", name: "第 6 轮 · 经济、小程序运行与团队" };
+  var LS_KEY = "wxtz-review-r6";
+  var DOC_PATH = "rounds/r6";
+
+  /* ---------- 题目（核心问题）---------- */
+var Q = [
+ { id: "unit-econ", cat: "经济与商品",
+  title: "单位经济的数字，从哪里来？",
+  ctx: [
+   "现在工价、线材、运费、微信手续费、平台服务费、售后、客服成本都没有真实数字。“微利自养”要成立、小程序要定价、织女收入要对外说清楚，都要先有这组数。",
+   "你已经定了：一期不抽运营资金池，平台垫付；工价按款固定；每单公开费用构成。",
+   "两种拿数字的办法：先用阶段 0 的真实订单跑出每款成本再定；或者先定目标比例反推。"
+  ],
+  src: "来源：第 2 轮 profit 答案；第 4 轮 ops-pool、freight-split 答案；docs/03 §8",
+  opts: [
+   { id: "a", label: "阶段 0 用 3–5 位织女的真实订单跑出每款实际工时、线材、运费、损耗，再定工价与服务费", desc: "数字最可靠；小程序定价要等阶段 0 出数，大约 1–2 个月。" },
+   { id: "b", label: "先定目标：平台服务费占售价的固定比例（比例请写），工价与定价反推，阶段 0 再校准", desc: "能马上定价；可能定错，织女工价偏低或平台亏本。" },
+   { id: "c", label: "其他", desc: "自己写。" }
+  ],
+  rec: "a",
+  why: "工价是织女最敏感的数字，定错一次会影响信任；阶段 0 本来就要验证每款标准工时，顺带记录成本几乎不增加工作量。小程序可以先上架但不开放下单，等数字出来再开。" },
+
+ { id: "mp-pricing", cat: "经济与商品",
+  title: "小程序首版卖什么，什么价？",
+  ctx: [
+   "当前决定：小程序池只接小程序订单；平台自营加织女受托加工；首版一单一款（套装作独立款号）；余货在小程序设“成品专区”常设销售。",
+   "还没定的：小程序商品和抖店是同一批款、同一个价，还是独立目录与独立定价。",
+   "小程序买家主要是老玩家与社群，抖店直播有促销和平台补贴，两边价格差别太大会互相影响。"
+  ],
+  src: "来源：第 3 轮 mp-model 答案；第 4 轮 surplus-mp 答案；docs/03 §15",
+  opts: [
+   { id: "a", label: "只开放固定款，与抖店同款同价；成品专区另标价", desc: "最简单，款式与工价沿用；小程序没有价格优势。" },
+   { id: "b", label: "只开放固定款，同款但小程序价可略低（折扣请写），体现私域福利", desc: "吸引老玩家转入私域；折扣吃掉平台服务费，影响微利自养。" },
+   { id: "c", label: "独立目录：除固定款外，小程序可有独有款，自行定价", desc: "灵活，也最复杂：新款需要图解、标准工时、工价全套。" },
+   { id: "d", label: "其他", desc: "自己写。" }
+  ],
+  rec: "a",
+  why: "首版先避免定价和款式两件新事同时出现；同价也避免和抖店互相拆台。等阶段 0 的成本数字出来、小程序有真实订单后，再决定折扣或独有款。" },
+
+ { id: "mp-dispatch", cat: "小程序订单与供给",
+  title: "小程序订单是全天随时下单，什么时候派给织女？",
+  ctx: [
+   "现有规则是为直播订单设计的：每天 9:00–13:00 整点派单，一天一批，次日才派前一晚的订单。",
+   "小程序订单全天随时到，买家付款后立刻想知道什么时候发货。夜里派单会打扰织女；批次太少，买家等得久，14 天交期里白白损耗。",
+   "买家看到的“预计发货时间”也取决于这个选择。"
+  ],
+  src: "来源：docs/03 §3.2；第 5 轮 cross-pool 答案",
+  opts: [
+   { id: "a", label: "沿用：每天 9:00–13:00 整点派，夜里和上午付款的订单等到次日或当天", desc: "规则不变，开发最少；买家最长要等一天才开始制作。" },
+   { id: "b", label: "白天多批：8:00–21:00 每小时整点派；夜里订单累积到次日 8:00", desc: "买家等待短；织女白天随时可能收到新单。" },
+   { id: "c", label: "实时：付款后立即派，全天，同样 1 小时确认", desc: "最快；织女夜里被打扰，要靠“免打扰时段”弥补。" },
+   { id: "d", label: "其他", desc: "自己写。" }
+  ],
+  rec: "b",
+  why: "白天多批比一天一批快得多，又不打扰夜里休息；织女本来就可以关闭接单开关。实时派单可以以后加，只是把整点间隔缩短。" },
+
+ { id: "capacity-gate", cat: "小程序订单与供给",
+  title: "买家下单前，怎么防止“下了单却派不出去”？",
+  ctx: [
+   "直播池用“限量上架”：开播前按织女剩余容量设库存，卖完即止。",
+   "小程序是我们自己的商城，可以实时检查：下单时看小程序池当前剩余容量，容量为 0 时怎么展示。",
+   "如果不限量，订单可能积压，14 天交期来不及，买家只能退款，体验和口碑都受损。"
+  ],
+  src: "来源：docs/03 §3.2；第 1 轮 listing 答案",
+  opts: [
+   { id: "a", label: "下单前检查剩余容量：为 0 显示“暂时售罄”，可预约到货提醒", desc: "不会超卖；会错过一部分订单。" },
+   { id: "b", label: "不限量，但容量不足时自动延长交期，并在下单页提示预计发货日", desc: "不丢订单；买家要等更久，延期期间可能退款。" },
+   { id: "c", label: "其他", desc: "自己写。" }
+  ],
+  rec: "a",
+  why: "和你在直播池用的“限量上架”一致，守住 14 天交期的承诺；错过的订单可以通过“到货提醒”召回。数值（容量算法）沿用现有“剩余工时 70%”的规则。" },
+
+ { id: "recruit-gate", cat: "小程序订单与供给",
+  title: "织女招募的节奏，怎么跟订单量挂钩？",
+  ctx: [
+   "你定了：织女 12 个月内 500 位以上，小程序池无上限，订单来自老玩家与社群。",
+   "风险：织女招来了，订单不够，织女没活干会流失；对外说“稳定收入”还可能引起纠纷。订单量目前没有预估。",
+   "需要一个招募闸门：什么时候开放新名额，什么时候暂停。"
+  ],
+  src: "来源：第 2 轮 scale 答案；第 3 轮 mp-demand 答案；docs/05 R18",
+  opts: [
+   { id: "a", label: "按数据开闸：近 4 周每位织女平均每周单量低于阈值（阈值请写）就暂停新名额", desc: "自动平衡；需要在阶段 1 开始记录这个指标。" },
+   { id: "b", label: "固定节奏：每月放固定名额（人数请写），与订单量无关", desc: "好管理；订单少时织女闲置。" },
+   { id: "c", label: "不限，先招募；织女是否有活由订单量自然决定，对外不承诺收入", desc: "增长最快；闲置与流失风险全由织女承担，法律上要在协议里写清。" },
+   { id: "d", label: "其他", desc: "自己写。" }
+  ],
+  rec: "a",
+  why: "无上限织女的前提是订单跟得上；用每位织女的周均单量做闸门，既不限制增长上限，又避免大面积闲置。阈值要等阶段 0 和小程序的真实订单数据才知道，这里先定规则，数值留空。" },
+
+ { id: "mp-onboarding", cat: "小程序订单与供给",
+  title: "（补答）小程序池织女的准入门槛，选什么？",
+  ctx: [
+   "第 4 轮你选了“先不定”。现在上面有了新的约束：要有招募闸门（上一题），质检是信用分抽检加志愿者审核，分级实名是接单前只验手机和微信。",
+   "原计划是四轮漏斗加样品寄回入库，在无上限规模下运费和人力都太贵。"
+  ],
+  src: "来源：第 4 轮 mp-onboarding 答案（先不定）；docs/03 §9；第 3 轮 identity、qc-scale 答案",
+  opts: [
+   { id: "a", label: "完整漏斗：作品照 + 小测验，再按指定款试做并寄样品入库，通过后接单", desc: "质量最稳，慢，样品运费和入库人力成本高。" },
+   { id: "b", label: "作品照 + 小测验通过后，直接接“首单保护”：前 3 单由平台指定简单款，全部人工审", desc: "不寄样品，用真实订单当试做；买家体验有少量风险。" },
+   { id: "c", label: "自助注册即可接单，前 N 单全部人工审（N 请写）", desc: "最快，质量风险最大。" },
+   { id: "d", label: "仍先不定", desc: "等阶段 0 跑出来再选。" }
+  ],
+  rec: "b",
+  why: "阶段 0 的熟人织女先验证质量链；规模版里用“首单保护”：简单款、全审、控制风险，又不需要寄样品。选“仍先不定”也可以，不会卡住开发，但阶段 1 前要补上。" },
+
+ { id: "mp-support", cat: "团队与服务",
+  title: "小程序买家的客服，走什么渠道？",
+  ctx: [
+   "第 3 轮你定了“买家走抖店客服”，但那只适用于抖店买家。小程序买家不在抖店，咨询、退款、质量问题没有现成入口。",
+   "小程序可以用微信自带的客服消息，由运营在后台回复（具体能力和规则待核实）；也可以配合社群。"
+  ],
+  src: "来源：第 3 轮 support 答案；docs/03 §15.4",
+  opts: [
+   { id: "a", label: "小程序内微信客服消息 + 订单页“申请售后”按钮；退款由运营审核后原路退回", desc: "入口清楚，记录留在小程序；需要运营在线回复。" },
+   { id: "b", label: "只用社群：买家进社群找运营，小程序只放售后申请表", desc: "省开发；老玩家社群适合，但新买家不一定有社群。" },
+   { id: "c", label: "其他", desc: "自己写。" }
+  ],
+  rec: "a",
+  why: "小程序买家是陌生买家时，社群不一定覆盖；订单页直接申请售后，数据留在系统，才能驱动自动改派和退款。微信客服消息的具体规则请在开发前核实。" },
+
+ { id: "ops-staffing", cat: "团队与服务",
+  title: "运营工作，谁来做？",
+  ctx: [
+   "阶段 1 的运营工作：导单、审照、买家与织女客服、结款、线材供应商对账、织女管理与招募。目前默认由你一人承担；志愿者只覆盖审照。",
+   "500 位织女的规模下，这个人力模型撑不住；而你定的是“微利自养”，人力成本要算进服务费里。",
+   "你的预算和对外部人员的态度我不知道，请按实际写。"
+  ],
+  src: "来源：docs/05 全项目复盘 C6；第 2 轮 profit 答案",
+  opts: [
+   { id: "a", label: "阶段 1 前半段你一人 + 志愿者；织女到达一定数量（数量请写）再招第一位运营", desc: "成本最低；你是单点，生病、出差就停摆。" },
+   { id: "b", label: "阶段 1 一开始就招 1 位兼职运营，负责客服、审照与结款对账", desc: "单点风险小；有固定人力成本，要先算进服务费。" },
+   { id: "c", label: "客服外包（按单收费），审照与结款自己做", desc: "客服最灵活；外包人员接触买家信息，要签保密并限制权限。" },
+   { id: "d", label: "其他", desc: "自己写。" }
+  ],
+  rec: "b",
+  why: "你一人同时承担客服、审照、结款和招募，在阶段 1 的体量下是最大的单点风险；兼职人力的成本相对于它引发的停摆损失更小。具体预算请你判断，这是我的工程与运营判断。" },
+
+ { id: "quality-bear", cat: "团队与服务",
+  title: "（补答）质量问题退款，具体怎么执行？",
+  ctx: [
+   "第 4 轮你选了“一期起织女承担该单退款货款（从应得里扣），货归织女”，并标了“需要更多信息”。",
+   "有三处不清楚：（1）阶段 0 熟人织女的试用约定里不含扣款，扣不扣；（2）质量分档（轻微、中等、严重）谁来判、凭什么判；（3）扣款会不会让织女觉得风险太大，影响招募。",
+   "律师咨询函第 7 题也在问这类约定是否有效。"
+  ],
+  src: "来源：第 4 轮 quality-bear 答案（B，需要更多信息）；咨询函第 7、11 题",
+  opts: [
+   { id: "a", label: "仍按 B，但分两步：阶段 0 熟人不扣款，只记录并校准分档标准；规模版起按标准执行，并设单织女月度扣款封顶（金额请写）", desc: "与试用约定一致；先用数据把标准校准，再扣款；封顶降低织女的风险感。" },
+   { id: "b", label: "仍按 B，从阶段 0 开始就执行，写进试用约定", desc: "和你第 4 轮的原意一致；熟人阶段就有扣款，试用约定要明写并请律师审。" },
+   { id: "c", label: "改为平台先担：质量问题退款由平台出，织女只扣信用分，不扣款；有数据后再重议", desc: "织女风险最低，招募最顺；平台承担全部退款成本，微利自养压力大。" },
+   { id: "d", label: "其他", desc: "自己写。" }
+  ],
+  rec: "a",
+  why: "分档标准（谁判、凭什么判）还没有数据支撑，现在就扣款，容易引发纠纷，也和试用约定里“不含扣款”的口径冲突。先在阶段 0 用真实订单校准，再执行，加上月度封顶，是风险最小的路径。" }
+];
+var CATS = ["经济与商品", "小程序订单与供给", "团队与服务"];
+  var N = Q.length;
+
+  /* ---------- 状态与存储 ---------- */
+  var S = { answers: {}, submittedAt: 0, updatedAt: 0 };
+  var dbh = null, saving = false, again = false, timer = null, saveMode = "local", lastCloud = 0;
+
+  function loadLocal() {
+    try {
+      var raw = localStorage.getItem(LS_KEY);
+      if (!raw) return;
+      var d = JSON.parse(raw);
+      if (d && d.answers) { S.answers = d.answers; S.submittedAt = d.submittedAt || 0; S.updatedAt = d.updatedAt || 0; }
+    } catch (e) {}
+  }
+  function persistLocal() {
+    try { localStorage.setItem(LS_KEY, JSON.stringify(S)); } catch (e) {}
+  }
+  function fmtTime(t) { var d = new Date(t); return d.getHours() + ":" + ("0" + d.getMinutes()).slice(-2); }
+  function setSave(mode) {
+    saveMode = mode;
+    var el = document.getElementById("saveState");
+    if (!el) return;
+    el.className = "state" + (mode === "fail" ? " fail" : "");
+    var t = { saving: "保存中…", cloud: "已自动保存 " + fmtTime(lastCloud || Date.now()), local: "仅保存在本机（云端不可用）", fail: "云端保存失败，已留在本机，下次改动会重试", none: "" }[mode] || "";
+    el.textContent = t;
+  }
+  function payload() {
+    return { round: ROUND.id, answers: S.answers, updatedAt: S.updatedAt, submittedAt: S.submittedAt || 0,
+      submittedISO: S.submittedAt ? new Date(S.submittedAt).toISOString() : "", readable: exportText() };
+  }
+  async function flush() {
+    if (saving) { again = true; return; }
+    saving = true;
+    if (dbh) setSave("saving");
+    try {
+      if (!dbh) throw { code: "nodb" };
+      await dbh.doc(DOC_PATH).set(payload());
+      lastCloud = Date.now();
+      setSave("cloud");
+    } catch (e) {
+      setSave(dbh ? "fail" : "local");
+    }
+    saving = false;
+    if (again) { again = false; flush(); }
+  }
+  function queueSave() {
+    persistLocal();
+    if (timer) clearTimeout(timer);
+    if (!dbh) { setSave("local"); return; }
+    setSave("saving");
+    timer = setTimeout(function () { timer = null; flush(); }, 700);
+  }
+  function touch() { S.updatedAt = Date.now(); }
+
+  /* ---------- 答案辅助 ---------- */
+  function getA(id) { return S.answers[id] || {}; }
+  function setA(id, patch) {
+    var a = Object.assign({}, getA(id), patch, { t: Date.now() });
+    S.answers[id] = a;
+    touch();
+    queueSave();
+  }
+  function status(q) {
+    var a = getA(q.id);
+    if (a.choice === "other" ? !!(a.text && a.text.trim()) : !!a.choice) return "done";
+    if (a.defer) return "defer";
+    return "empty";
+  }
+  function letter(q, id) { for (var i = 0; i < q.opts.length; i++) if (q.opts[i].id === id) return String.fromCharCode(65 + i); return "?"; }
+  function answerText(q) {
+    var a = getA(q.id);
+    if (!a.choice) return "";
+    if (a.choice === "other") return "其他：" + (a.text || "").trim();
+    for (var i = 0; i < q.opts.length; i++) if (q.opts[i].id === a.choice) return letter(q, a.choice) + ". " + q.opts[i].label;
+    return "";
+  }
+  function counts() {
+    var c = { done: 0, defer: 0, empty: 0 };
+    Q.forEach(function (q) { c[status(q)]++; });
+    return c;
+  }
+  function exportText() {
+    var lines = [ROUND.name + "（共 " + N + " 题）"];
+    Q.forEach(function (q, i) {
+      var a = getA(q.id), st = status(q);
+      var s = (i + 1) + ". [" + q.id + "] " + q.title + "\n   答：" + (answerText(q) || (st === "defer" ? "（先不定）" : "（未答）"));
+      if (a.defer && st === "done") s += "  [标记：需要更多信息]";
+      if (a.defer && st === "defer") s += "";
+      if (a.note && a.note.trim()) s += "\n   备注：" + a.note.trim();
+      lines.push(s);
+    });
+    return lines.join("\n");
+  }
+
+  /* ---------- 渲染 ---------- */
+  var app = document.getElementById("app");
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+  function route() {
+    var h = (location.hash || "").replace("#", "");
+    if (h === "summary") return { v: "summary" };
+    var m = /^q(\d+)$/.exec(h);
+    if (m) { var i = parseInt(m[1], 10) - 1; if (i >= 0 && i < N) return { v: "q", i: i }; }
+    return { v: "start" };
+  }
+  function go(h) { if (location.hash === "#" + h) render(); else location.hash = h; }
+
+  function renderStrip(cur) {
+    var el = document.getElementById("strip");
+    if (el.style) el.style.gridTemplateColumns = "repeat(" + N + ", 1fr)";
+    el.innerHTML = Q.map(function (q, i) {
+      var st = status(q);
+      return '<button class="seg ' + (st === "done" ? "done" : st === "defer" ? "defer" : "") + (cur === i ? " cur" : "") +
+        '" data-act="goq" data-i="' + i + '" title="第 ' + (i + 1) + " 题：" + esc(q.title) + '" aria-label="第 ' + (i + 1) + ' 题"></button>';
+    }).join("");
+    var c = counts();
+    document.getElementById("progressText").textContent = "已答 " + c.done + " / " + N + (c.defer ? "，待定 " + c.defer : "");
+  }
+
+  function viewStart() {
+    var c = counts();
+    var byCat = CATS.map(function (name) {
+      var n = Q.filter(function (q) { return q.cat === name; }).length;
+      return '<div class="cat"><b>' + name + "</b><span>" + n + " 题</span></div>";
+    }).join("");
+    var first = 0;
+    for (var i = 0; i < N; i++) if (status(Q[i]) === "empty") { first = i; break; }
+    var started = c.done + c.defer > 0;
+    return '<section class="card">' +
+      '<div class="eyebrow">' + esc(ROUND.name) + "</div>" +
+      "<h1>经济、小程序运行与团队：" + N + " 个问题</h1>" +
+      '<div class="ctx"><p>通读全项目后发现的缺口：没有单位经济数字、小程序商城没有设计、小程序订单的派单节奏与供给匹配、买家客服渠道、运营人力，再加上第 4 轮留下的两题补答（小程序池准入、质量退款）。</p>' +
+      "<p>每题有我的推荐和原因，也可选“其他”自己写。答案自动保存，答完点“提交”。题中的数字（阈值、折扣、封顶）都需要你按实际填，我没有这些数据。</p></div>" +
+      '<div class="cats">' + byCat + "</div>" +
+      '<div class="nav"><span class="state">选推荐只是默认建议，每题都可以改。不确定的题可以点“先不定”。</span>' +
+      '<div class="navr"><button class="btn primary" data-act="goq" data-i="' + first + '">' + (started ? "继续作答（第 " + (first + 1) + " 题）" : "开始第 1 题") + "</button>" +
+      (started ? '<button class="btn" data-act="gosum">查看汇总</button>' : "") + "</div></div></section>";
+  }
+
+  function viewQ(i) {
+    var q = Q[i], a = getA(q.id);
+    var opts = q.opts.map(function (o, k) {
+      var sel = a.choice === o.id;
+      var isRec = q.rec === o.id;
+      var why = isRec ? '<div class="why"><span class="lab">我为什么推荐这个</span><p>' + esc(q.why) + "</p></div>" : "";
+      return '<div class="optwrap"><label class="opt' + (sel ? " sel" : "") + (isRec ? " hasWhy" : "") + '" data-opt="' + o.id + '">' +
+        '<input type="radio" name="opt" value="' + o.id + '"' + (sel ? " checked" : "") + ">" +
+        '<span class="badge">' + String.fromCharCode(65 + k) + "</span>" +
+        '<span><span class="otitle">' + esc(o.label) + (isRec ? ' <span class="pill">推荐</span>' : "") + "</span>" +
+        '<span class="odesc">' + esc(o.desc) + "</span></span></label>" + why + "</div>";
+    }).join("");
+    var other = '<div class="optwrap"><label class="opt' + (a.choice === "other" ? " sel" : "") + '" data-opt="other">' +
+      '<input type="radio" name="opt" value="other"' + (a.choice === "other" ? " checked" : "") + ">" +
+      '<span class="badge">✎</span><span><span class="otitle">其他：我自己写答案</span>' +
+      '<span class="odesc">以上都不合适，或者想改其中某个选项。</span></span></label></div>' +
+      '<div class="field" id="otherField"' + (a.choice === "other" ? "" : " hidden") + ">" +
+      '<label for="otherText">你的答案</label><textarea id="otherText" data-field="text" placeholder="写下你想怎么处理">' + esc(a.text || "") + "</textarea></div>";
+    var last = i === N - 1;
+    return '<section class="card">' +
+      '<div class="eyebrow">' + esc(q.cat) + " · 第 " + (i + 1) + " / " + N + " 题</div>" +
+      "<h1>" + esc(q.title) + "</h1>" +
+      '<div class="ctx"><span class="lab">为什么问这个</span>' + q.ctx.map(function (p) { return "<p>" + esc(p) + "</p>"; }).join("") +
+      '<span class="src">' + esc(q.src) + "</span></div>" +
+      '<div class="opts" role="radiogroup" aria-label="选项">' + opts + other + "</div>" +
+      '<div class="field"><label for="noteText">补充说明或理由（可选）</label><textarea id="noteText" data-field="note" placeholder="例如：为什么选这个、有什么顾虑、需要我先查什么">' + esc(a.note || "") + "</textarea></div>" +
+      '<label class="defer"><input type="checkbox" id="deferBox" data-field="defer"' + (a.defer ? " checked" : "") + "> 这题我先不定，需要更多信息或先调研</label>" +
+      '<div class="nav"><button class="btn" data-act="' + (i === 0 ? "gostart" : "goq") + '" data-i="' + (i - 1) + '">' + (i === 0 ? "返回说明" : "上一题") + "</button>" +
+      '<div class="navr">' + (q.rec ? '<button class="btn small" data-act="usrec">采用推荐</button>' : '') +
+      '<button class="btn primary" data-act="' + (last ? "gosum" : "goq") + '" data-i="' + (i + 1) + '">' + (last ? "完成，查看汇总" : "下一题") + "</button></div></div>" +
+      "</section>";
+  }
+
+  function viewSummary() {
+    var c = counts();
+    var dirty = S.submittedAt && S.updatedAt > S.submittedAt;
+    var banner = "";
+    if (S.submittedAt && !dirty) banner = '<div class="banner ok">已于 ' + new Date(S.submittedAt).toLocaleString() + " 提交。回到对话告诉我“已提交”，我会读取答案。</div>";
+    else if (S.submittedAt && dirty) banner = '<div class="banner warn">提交之后你又修改了答案，请重新提交。</div>';
+    else if (c.empty) banner = '<div class="banner warn">还有 ' + c.empty + " 题没有回答，可以先提交，也可以回去补。未答的题我会当作“没想好”，不会替你决定。</div>";
+    var items = Q.map(function (q, i) {
+      var st = status(q), a = getA(q.id);
+      var ans = answerText(q);
+      var tags = "";
+      if (st === "empty") tags = '<span class="tag miss">未答</span>';
+      if (a.defer) tags += ' <span class="tag warn">先不定</span>';
+      return '<div class="sumitem"><div class="sumno">' + (i + 1) + "</div><div>" +
+        '<div class="sumq">' + esc(q.title) + "</div>" +
+        (ans ? '<div class="sumans">' + esc(ans) + "</div>" : "") +
+        (a.note && a.note.trim() ? '<div class="sumnote">备注：' + esc(a.note.trim()) + "</div>" : "") +
+        '</div><div class="sumact">' + tags + ' <button class="link" data-act="goq" data-i="' + i + '">修改</button></div></div>';
+    }).join("");
+    return '<section class="card"><div class="eyebrow">' + esc(ROUND.name) + "</div><h1>汇总与提交</h1>" + banner +
+      '<div class="sumlist">' + items + "</div>" +
+      '<div class="nav"><button class="btn" data-act="goq" data-i="' + (N - 1) + '">回到第 ' + N + " 题</button>" +
+      '<div class="navr"><button class="btn" data-act="copy">复制全部答案</button>' +
+      '<button class="btn primary" data-act="submit">' + (S.submittedAt ? "重新提交" : "提交") + "</button></div></div>" +
+      '<div id="copyArea"></div></section>';
+  }
+
+  function render() {
+    var r = route();
+    if (r.v === "q") { app.innerHTML = viewQ(r.i); renderStrip(r.i); }
+    else if (r.v === "summary") { app.innerHTML = viewSummary(); renderStrip(-1); }
+    else { app.innerHTML = viewStart(); renderStrip(-1); }
+    setSave(saveMode);
+    if (r.v !== "q") window.scrollTo(0, 0);
+  }
+
+  /* ---------- 事件 ---------- */
+  function curQ() { var r = route(); return r.v === "q" ? Q[r.i] : null; }
+  function refreshSel() {
+    var q = curQ(); if (!q) return;
+    var a = getA(q.id);
+    app.querySelectorAll(".opt").forEach(function (el) {
+      var on = el.getAttribute("data-opt") === a.choice;
+      el.classList.toggle("sel", on);
+      var inp = el.querySelector("input"); if (inp) inp.checked = on;
+    });
+    var f = document.getElementById("otherField"); if (f) f.hidden = a.choice !== "other";
+    var cb = document.getElementById("deferBox"); if (cb) cb.checked = !!a.defer;
+    renderStrip(route().i);
+  }
+
+  app.addEventListener("click", function (e) {
+    var t = e.target.closest("[data-act]");
+    if (t) {
+      var act = t.getAttribute("data-act");
+      if (act === "goq") { go("q" + (parseInt(t.getAttribute("data-i"), 10) + 1)); return; }
+      if (act === "gostart") { go("start"); return; }
+      if (act === "gosum") { go("summary"); return; }
+      if (act === "usrec") { var q = curQ(); if (q && q.rec) { setA(q.id, { choice: q.rec }); refreshSel(); } return; }
+      if (act === "copy") { doCopy(); return; }
+      if (act === "submit") { doSubmit(); return; }
+    }
+  });
+  document.getElementById("strip").addEventListener("click", function (e) {
+    var t = e.target.closest("[data-act='goq']");
+    if (t) go("q" + (parseInt(t.getAttribute("data-i"), 10) + 1));
+  });
+  app.addEventListener("change", function (e) {
+    var q = curQ(); if (!q) return;
+    if (e.target.name === "opt") {
+      setA(q.id, { choice: e.target.value });
+      refreshSel();
+      if (e.target.value === "other") { var ta = document.getElementById("otherText"); if (ta) ta.focus(); }
+    } else if (e.target.id === "deferBox") {
+      setA(q.id, { defer: e.target.checked });
+      refreshSel();
+    }
+  });
+  app.addEventListener("input", function (e) {
+    var q = curQ(); if (!q) return;
+    var f = e.target.getAttribute("data-field");
+    if (f === "text") { setA(q.id, { text: e.target.value }); renderStrip(route().i); }
+    else if (f === "note") { setA(q.id, { note: e.target.value }); }
+  });
+  document.addEventListener("keydown", function (e) {
+    var tag = (e.target.tagName || "").toLowerCase();
+    if (tag === "textarea" || tag === "input" || e.metaKey || e.ctrlKey || e.altKey) return;
+    var r = route();
+    if (r.v !== "q") return;
+    if (e.key === "ArrowRight") go(r.i === N - 1 ? "summary" : "q" + (r.i + 2));
+    if (e.key === "ArrowLeft") go(r.i === 0 ? "start" : "q" + r.i);
+  });
+  window.addEventListener("hashchange", render);
+
+  async function doSubmit() {
+    S.submittedAt = Date.now();
+    S.updatedAt = S.submittedAt;
+    persistLocal();
+    if (timer) { clearTimeout(timer); timer = null; }
+    render();
+    await flush();
+    render();
+    if (!dbh) {
+      var area = document.getElementById("copyArea");
+      if (area) area.innerHTML = '<div class="banner warn" style="margin-top:12px">云端保存不可用，我读不到你的答案。请点“复制全部答案”，把文字贴回对话。</div>';
+    }
+  }
+  function doCopy() {
+    var text = exportText();
+    var area = document.getElementById("copyArea");
+    function fallback() {
+      area.innerHTML = '<div class="field" style="margin-top:12px"><span class="lab">浏览器不允许自动复制，请手动全选复制：</span><textarea class="copybox" id="copyBox" readonly></textarea></div>';
+      var b = document.getElementById("copyBox"); b.value = text; b.focus(); b.select();
+    }
+    try {
+      navigator.clipboard.writeText(text).then(function () {
+        area.innerHTML = '<div class="banner ok" style="margin-top:12px">已复制到剪贴板。</div>';
+      }, fallback);
+    } catch (e) { fallback(); }
+  }
+
+  /* ---------- 启动 ---------- */
+  document.getElementById("roundName").textContent = ROUND.name + " · 共 " + N + " 题";
+  loadLocal();
+  render();
+  setSave("none");
+
+  (async function connect() {
+    try {
+      var db = await (window.claude && window.claude.use ? window.claude.use("db") : null);
+      if (!db) { if (Object.keys(S.answers).length) setSave("local"); else setSave("local"); return; }
+      dbh = db;
+      var snap = await Promise.race([
+        db.doc(DOC_PATH).get(),
+        new Promise(function (_, rej) { setTimeout(function () { rej({ code: "timeout" }); }, 10000); })
+      ]);
+      var cloudUpdated = 0;
+      if (snap && snap.exists) {
+        var d = snap.data() || {};
+        cloudUpdated = d.updatedAt || 0;
+        var ca = d.answers || {};
+        Object.keys(ca).forEach(function (id) {
+          if (!S.answers[id] || (ca[id].t || 0) > (S.answers[id].t || 0)) S.answers[id] = ca[id];
+        });
+        S.submittedAt = Math.max(S.submittedAt || 0, d.submittedAt || 0);
+        S.updatedAt = Math.max(S.updatedAt || 0, cloudUpdated);
+        persistLocal();
+        var ae = document.activeElement;
+        if (!ae || !/^(TEXTAREA|INPUT)$/.test(ae.tagName)) render();
+        lastCloud = cloudUpdated || Date.now();
+        setSave("cloud");
+      } else {
+        setSave("local");
+        setSave(Object.keys(S.answers).length ? "saving" : "none");
+      }
+      if (S.updatedAt > cloudUpdated && Object.keys(S.answers).length) queueSave();
+      else if (!Object.keys(S.answers).length) setSave("none");
+    } catch (e) {
+      setSave(dbh ? "fail" : "local");
+    }
+  })();
+})();
+</script>

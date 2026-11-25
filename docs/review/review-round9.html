@@ -1,0 +1,882 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>8 处不稳定节点加固确认 · 第 9 轮</title>
+<style>
+:root {
+  --bg: #f4f6f3;
+  --surface: #ffffff;
+  --ink: #1d2623;
+  --muted: #5b6862;
+  --line: #d8ded9;
+  --accent: #2f5d8a;
+  --accent-ink: #ffffff;
+  --accent-soft: #e6eff8;
+  --rec: #247252;
+  --rec-soft: #e3f2eb;
+  --scene-bg: #fff8f3;
+  --scene-border: #d97706;
+  --warn: #9a6a12;
+  --warn-soft: #f7edd4;
+  --danger: #a33a3a;
+  --font-body: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, -apple-system, sans-serif;
+  --font-display: "Songti SC", "STSong", "Noto Serif SC", Georgia, serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #121816;
+    --surface: #1b2321;
+    --ink: #e7edea;
+    --muted: #9aa7a1;
+    --line: #2e3b36;
+    --accent: #7cb0e0;
+    --accent-ink: #0f1a24;
+    --accent-soft: #1d2e3e;
+    --rec: #6bc49c;
+    --rec-soft: #173028;
+    --scene-bg: #261e15;
+    --scene-border: #f59e0b;
+    --warn: #e0b45c;
+    --warn-soft: #332818;
+    --danger: #e08585;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.7;
+  padding: 20px 16px 64px;
+}
+.wrap {
+  max-width: 730px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+header.top {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.brandrow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.brand {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 19px;
+}
+.round {
+  font-size: 13px;
+  color: var(--muted);
+}
+.strip {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 5px;
+}
+.seg {
+  height: 10px;
+  border-radius: 4px;
+  background: var(--line);
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  transition: transform .12s ease, background .15s ease;
+}
+.seg:hover { transform: scaleY(1.25); }
+.seg.done { background: var(--accent); }
+.seg.defer { background: var(--warn); }
+.seg.cur { outline: 2px solid var(--ink); outline-offset: 2px; }
+.stripmeta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  color: var(--muted);
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 26px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, .03);
+}
+.eyebrow {
+  font-size: 13px;
+  color: var(--muted);
+  font-weight: 600;
+}
+h1 {
+  font-family: var(--font-display);
+  font-size: 23.5px;
+  line-height: 1.4;
+  margin: 0;
+}
+.scene {
+  background: var(--scene-bg);
+  border-left: 4px solid var(--scene-border);
+  border-radius: 0 8px 8px 0;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 15px;
+}
+.scene .lab {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--scene-border);
+  letter-spacing: .04em;
+}
+.scene p { margin: 0; }
+.opts {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.optwrap {
+  display: flex;
+  flex-direction: column;
+}
+.opt {
+  display: grid;
+  grid-template-columns: 30px 1fr;
+  gap: 12px;
+  padding: 15px;
+  border: 1.5px solid var(--line);
+  border-radius: 10px;
+  cursor: pointer;
+  background: var(--surface);
+  transition: border-color .15s ease, background .15s ease;
+}
+.opt:hover { border-color: var(--accent); }
+.opt.sel {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.opt.hasWhy {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.opt input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.badge {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1.5px solid var(--line);
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--muted);
+  margin-top: 1px;
+}
+.opt.sel .badge {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-color: var(--accent);
+}
+.otitle {
+  font-weight: 700;
+  font-size: 16px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.odesc {
+  display: block;
+  color: var(--muted);
+  font-size: 14.5px;
+  margin-top: 4px;
+}
+.pill {
+  font-size: 12px;
+  font-weight: 700;
+  padding: 2px 9px;
+  border-radius: 99px;
+  background: var(--rec-soft);
+  color: var(--rec);
+}
+.why {
+  border: 1.5px solid var(--rec);
+  border-top: 0;
+  background: var(--rec-soft);
+  border-radius: 0 0 10px 10px;
+  padding: 11px 15px;
+  font-size: 14.5px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.why .lab {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--rec);
+}
+.why p { margin: 0; }
+textarea {
+  width: 100%;
+  font: inherit;
+  font-size: 15px;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1.5px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  min-height: 76px;
+  resize: vertical;
+  line-height: 1.6;
+}
+textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.field .lab {
+  font-size: 13.5px;
+  color: var(--muted);
+}
+.defer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14.5px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.defer input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--warn);
+}
+.nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding-top: 6px;
+  border-top: 1px solid var(--line);
+}
+.navr {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 18px;
+  border-radius: 8px;
+  border: 1.5px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 15px;
+  cursor: pointer;
+  min-height: 44px;
+}
+.btn:hover { border-color: var(--accent); }
+.btn.primary {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-color: var(--accent);
+  font-weight: 700;
+}
+.btn.recbtn {
+  background: var(--rec-soft);
+  color: var(--rec);
+  border-color: var(--rec);
+  font-weight: 600;
+}
+.btn.small {
+  min-height: 36px;
+  padding: 6px 12px;
+  font-size: 13.5px;
+}
+.cats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 10px;
+}
+.cat {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px 14px;
+  font-size: 14.5px;
+  background: var(--surface);
+}
+.cat b { display: block; margin-bottom: 2px; }
+.cat span { color: var(--muted); font-size: 13.5px; }
+.sumlist {
+  display: flex;
+  flex-direction: column;
+}
+.sumitem {
+  display: grid;
+  grid-template-columns: 36px 1fr auto;
+  gap: 12px;
+  padding: 14px 0;
+  border-top: 1px solid var(--line);
+  align-items: start;
+}
+.sumitem:first-child { border-top: 0; }
+.sumno {
+  font-family: var(--font-display);
+  font-weight: 700;
+  color: var(--muted);
+  font-size: 15px;
+}
+.sumq { font-weight: 700; font-size: 15.5px; }
+.sumans { font-size: 14.5px; margin-top: 4px; white-space: pre-wrap; }
+.sumnote { font-size: 13.5px; color: var(--muted); margin-top: 4px; white-space: pre-wrap; }
+.tag {
+  display: inline-block;
+  font-size: 12px;
+  padding: 1px 8px;
+  border-radius: 99px;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+.tag.ok { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.tag.warn { background: var(--warn-soft); color: var(--warn); font-weight: 600; }
+.tag.miss { border: 1px solid var(--danger); color: var(--danger); }
+.banner {
+  border-radius: 8px;
+  padding: 12px 14px;
+  font-size: 14.5px;
+}
+.banner.ok { background: var(--rec-soft); border: 1px solid var(--rec); color: var(--rec); }
+.banner.warn { background: var(--warn-soft); border: 1px solid var(--warn); color: var(--warn); }
+.copybox {
+  width: 100%;
+  min-height: 220px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+}
+.hint {
+  font-size: 13px;
+  color: var(--muted);
+}
+@media (max-width: 540px) {
+  .card { padding: 18px 16px; }
+  h1 { font-size: 20.5px; }
+  .sumitem { grid-template-columns: 28px 1fr; }
+  .sumitem .sumact { grid-column: 2; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="brandrow">
+      <div class="brand">无限天真 · 8 处不稳定节点加固</div>
+      <div class="round">第 9 轮 · 共 8 题</div>
+    </div>
+    <div class="strip" id="strip" aria-label="题目进度"></div>
+    <div class="stripmeta">
+      <span id="progressText">准备开始</span>
+      <span id="saveText">自动保存在本机浏览器</span>
+    </div>
+  </header>
+
+  <main id="app"></main>
+</div>
+
+<script>
+(function () {
+  var STORAGE_KEY = "wxtz_review_round9_v1";
+
+  var QUESTIONS = [
+    {
+      id: "eta_vs_queue",
+      group: "1/8 · 发货时效冲突",
+      title: "商品页写“3–5 天内发货”，那系统最多允许给一位织女排几天的活？",
+      scene: "【如果不修会怎样翻车】现在小程序商品页写着“下单后 3–5 天内发出”，但旧的派单公式还写着“允许给织女排满 14 天工时的 70%（约 10 天的活）”。一旦某位织女手里已经排了 6 天的单，系统今天又把新顾客的单派给她——顾客排在队尾，要等第 8–10 天才能发出来，直接违约被投诉！",
+      rec: "A",
+      why: "承诺几天发，队列就按几天锁死！小程序承诺 3–5 天发，那织女手里没寄出的单子最多只准排满“3 天可用工时”（留 1–2 天给审照和快递员上门）；排满了就派给别的织女，全员都排满就自动显示“暂时售罄”，绝对不会打自己脸。抖店预售单如果设的是 7–14 天预售，按抖店天数单独算。",
+      options: [
+        { k: "A", t: "按渠道承诺分开锁上限！小程序单只准排满“3 天可用工时”，抖店预售按预售天数单独设", d: "从根源上消灭超时违约；后台把天数做成滑块配置，随时可调。" },
+        { k: "B", t: "不缩短织女排队上限，而是把小程序商品页改成“下单后 7–10 天内发出”", d: "织女能多囤单，但小程序顾客一看要等 10 天，下单转化率会大跌。" },
+        { k: "C", t: "商品页动态显示：人闲时显示“3–5 天发”，排队多时自动变成“7–10 天发”", d: "最灵活，但前端展示与客服解释稍微复杂一点。" }
+      ]
+    },
+    {
+      id: "midway_stall",
+      group: "2/8 · 中途停工熔断",
+      title: "织女接了单，结果中途家里有急事没动针，怎么提前发现不耽误发货？",
+      scene: "【如果不修会怎样翻车】织女周一接了单（周五前必须发出）。周二她家里孩子突然发烧住院，顾不上钩也没告诉你；系统平时不催过程，一直等到周五超时了才报警——这时候再转给另一位织女从头钩，哪怕最快也要再等 2–3 天，必然违约！",
+      rec: "A",
+      why: "不搞讨人嫌的“每天打卡催命”，只做两道温柔救生索：① 给织女留体面出口（接单 24 小时内点“临时有事转单”完全免责不扣分）；② 只有当队首那包单子超过 48 小时一点动静都没有，系统才发一条消息问“能按时完成吗？”，再过 12 小时还不理就直接收回改派（优先派给手里有余货的人秒发救场）。",
+      options: [
+        { k: "A", t: "双保险：接单24h内允许“无责主动转单” + 队首超48h无动静自动询问，12h不回自动收回改派", d: "平时零打扰，真出意外第 2–3 天就能救火，来得及换人钩完。" },
+        { k: "B", t: "要求织女每天必须在小程序点一次“今日正常制作中”打卡", d: "运营最放心，但太像上班打卡，违背“只看结果不催过程”的初心，织女会烦。" },
+        { k: "C", t: "不做中途检查，完全靠超期后扣信用分/暂停接单事后惩罚", d: "开发最省事，但顾客那单已经超时违约了，惩罚织女也挽回不了差评。" }
+      ]
+    },
+    {
+      id: "photo_blindspot",
+      group: "3/8 · 照片审核盲区",
+      title: "怎么防止“正面美图看着挺好，顾客收到却发现缩水一圈、背面露线头、肚子软塌塌”？",
+      scene: "【如果不修会怎样翻车】辅料包咱们已经定下跟江浙沪主供应商一起发了，但还有三个坑单看一张正面照根本审不出来：① 手太紧钩出来比标准小了 2 厘米；② 背面收口线头乱七八糟；③ 省棉花塞得干瘪塌陷。粉丝志愿者光看正面觉得“好可爱”就点了通过，顾客拿到实物立马退货！",
+      rec: "A",
+      why: "不用买尺子！平台本来就要给每位织女寄“袋码贴纸”，顺手印一张扑克牌大小的【标准比对垫卡】（上面印好刻度框和色块）随贴纸一起寄过去——拍照时强制按 3 个框上传：① 正面放在比对卡上拍（大小差 5 毫米一眼看穿）；② 背面特写（看藏线）；③ 侧面饱满度照。粉丝志愿者对着框一比就能审准！",
+      options: [
+        { k: "A", t: "随袋码寄一张“标准刻度比对卡” + 强制拍 3 张固定机位（正面压卡比大小 / 背面看藏线 / 侧面看饱满度）", d: "几乎零额外成本（一张小卡几分钱），彻底堵死大小缩水、背面露线和塞棉干瘪。" },
+        { k: "B", t: "不印比对卡，让织女自己在成品旁边放一枚 1 元硬币拍正面 + 背面 2 张照", d: "不用印卡就能起步，但很多人家里现在找不到硬币。" },
+        { k: "C", t: "要求织女额外拍一段 5 秒钟捏一捏、转一圈的短视频上传", d: "看得最清楚，但视频占云存储流量费贵（是图片的 10 倍），志愿者加载也慢。" }
+      ]
+    },
+    {
+      id: "volunteer_sla",
+      group: "4/8 · 粉丝志愿者卡单与放水",
+      title: "织女下午交了成品照急着赶快递，万一粉丝志愿者半天凑不够 5 票怎么办？",
+      scene: "【如果不修会怎样翻车】织女下午 2 点钩完交照，只要 4 点前审过，江浙沪快递员当天就能收走。结果周三下午粉丝志愿者都在上班上课，到 5 点只凑了 2 票，快递员下班了，硬生生晚发一天！另外，有些热情粉丝不懂针法，看啥都觉得萌，全给满分放水。",
+      rec: "A",
+      why: "用“上岗小考”卡住放水，用“2 小时快审降级”卡住拖延：① 粉丝想当志愿者，先连闯 5 道找茬题（混入歪眼、大小脸、露棉花的真次品图），全找出来才发上岗徽章；② 交照满 2 小时还没凑够 5 票，只要已有 >=2 位高准确率志愿者全给通过且无差评，系统直接放行（有差评或 0 票则弹窗推给运营 10 秒点完），绝不耽误当天快递！",
+      options: [
+        { k: "A", t: "粉丝上岗先过5道“次品找茬题” + 交照超2小时未凑齐5票时（满2票全优自动放行，否则弹运营秒审）", d: "既防住粉丝“闭眼夸萌放水”，又保证每单最多等 2 小时必出结果。" },
+        { k: "B", t: "平时只用 3 票定输赢；超过 1 小时没审完的全部转给运营人工审", d: "更快，但前期志愿者少时运营手机弹窗会比较频繁。" },
+        { k: "C", t: "不管多久必须凑够 5 票才放行，当天赶不上快递就次日发", d: "最省运营精力，但白白浪费 1 天时效。" }
+      ]
+    },
+    {
+      id: "funnel_anti_leak",
+      group: "5/8 · 入驻漏斗定型与防骗图解",
+      title: "新织女还没交 200 元保证金时试钩“指定作品”，怎么防止同行来白嫖你们的爆款图解？",
+      scene: "【如果不修会怎样翻车】你们辛辛苦苦原创了一款卖爆的 IP 挂件。如果入驻第 3 关直接拿这个在售爆款的图解发给陌生报名者去试钩，同行花 5 分钟填个表、把图解一抄就消失了，一分钱保证金没交，你们核心图解全泄光了！同时咱们之前说入驻前几关还要拍板定型。",
+      rec: "A",
+      why: "专门画一个【非卖品考级小样】（比如一颗带换色、加减针、塞棉、贴眼睛的小蘑菇/小团子，40 分钟能钩完，店里根本不卖它）！同行骗走也没用，真织女钩起来也不累，但所有手艺硬功底全能测出来。顺手把入驻固定为清爽 4 步：① 报名页（自动校验是否在江浙沪开放区 + 8道常识题 + 传3张旧作）→ ② 过审告知200元保证金规则，解锁【非卖品考级小样】拍照初验 → ③ 自费寄这颗小样实物入库终验 → ④ 缴200元保证金正式接单！",
+      options: [
+        { k: "A", t: "用“专用非卖品考级小样”做考察款（不泄漏在售图解），并将入驻正式定型为上述清爽 4 步", d: "零图解商业泄密风险，40 分钟试做成本合理，一步到位把入驻漏斗定死。" },
+        { k: "B", t: "先收 200 元保证金，交完钱才给在售款图解试钩（考不过再退她 200 元）", d: "也能防白嫖，但还没考过就要先掏 200 块，转化率极低，且频繁进出退钱容易引发支付投诉。" },
+        { k: "C", t: "用店里最老的一款普通引流款做考察款，不怕别人抄", d: "省得单独画考级小样，但引流款图解还是会外流。" }
+      ]
+    },
+    {
+      id: "township_pickup",
+      group: "6/8 · 村镇上门取件兜底",
+      title: "如果某位手艺特别好的织女住在村镇，快递员不肯进村上门取件怎么办？",
+      scene: "【如果不修会怎样翻车】咱们已经定下前期集中做江浙沪（快递全国最密），但江浙沪郊县村镇以及后面扩云贵川、北方、西北时，总会遇到手艺一流但住村里的织女——系统下了快递100上门单，村口快递员电话里说“村里不取，你自己拿来镇上菜鸟驿站寄”，结果单子卡死在系统里！",
+      rec: "A",
+      why: "主力走系统自动上门取件（占 90%），同时给住村镇的好织女留一个【驿站自寄兜底开关】：入驻时测第一单就能试出来，如果她家确实不上门、但她愿意顺路去镇上驿站寄，后台把她标为“自寄织女”——她去驿站寄出后填运单号，系统按咱们江浙沪标准协议价（比如 3 元）随结款把邮费补给她，既不卡死系统，也不丢掉村镇好手艺人。",
+      options: [
+        { k: "A", t: "默认系统自动叫上门取件；若村镇确实不上门，允许将该织女切为“驿站自寄+填单号按标准价补邮费”", d: "90% 自动跑，10% 村镇好手艺人也能顺畅兼容，以后扩云贵川/西北更实用。" },
+        { k: "B", t: "一刀切：凡是快递员不能上门代打面单的地址，一律不准入驻", d: "系统最纯粹，但后面扩云贵川和北方乡镇时会筛掉大批农村宝妈主力军。" }
+      ]
+    },
+    {
+      id: "douyin_csv_guard",
+      group: "7/8 · 抖店手工导表防呆",
+      title: "个体户阶段抖店靠人工导表格和设库存，怎么防止忙中出错“漏导退款单”或“填多库存超卖”？",
+      scene: "【如果不修会怎样翻车】没有抖店 API 前，全靠人手每天操作。最容易出两个低级失误：① 早上导单时漏传了“售后退款表”，把半夜已退款的 8 单派给织女白钩了；② 晚上开播前拍脑袋在抖店填了 300 件库存，结果江浙沪织女加起来只剩 120 件的空闲工时，瞬间卖爆违约！",
+      rec: "A",
+      why: "不靠人的记性，直接让后台代码“硬锁防呆”：① 每天早上导抖店订单时，页面强制要求【订单表 + 售后表】两个文件框都传齐（或勾选确认今日0售后）才点亮“开始派单”按钮；② 后台首页置顶大字实时算出【今晚直播可上架安全件数 = XX 件】，运营开播前照抄这个数填进抖店就行；③ 发货时再用中通吉 ERP 自动二次拦截刚退的单。",
+      options: [
+        { k: "A", t: "上齐 3 道硬防呆锁：双表同传才解锁派单 + 首页大字算好开播安全库存照抄 + ERP 发货前二次拦退单", d: "开发只需半天，把人为忙乱犯错的概率压到接近 0。" },
+        { k: "B", t: "不做强制锁，靠运营操作手册自觉检查", d: "忙起来或换人顶班时迟早会忘一次。" }
+      ]
+    },
+    {
+      id: "tax_compliance_pace",
+      group: "8/8 · 财税无票成本与合规节奏",
+      title: "在体量变大、迁有限公司之前，个体户阶段怎么守住税务无票成本与二清安全线？",
+      scene: "【如果不修会怎样翻车】这是咱们前面补的第 6 个根问题：买家付你 100 块算收入，你转给个人织女 50 块手工费她没法给你开发票；加上收 200 元保证金和小程序收款结算。如果前期糊里糊涂乱走账、乱写协议字眼，等单量一大被查或被投诉，前面白忙活！",
+      rec: "A",
+      why: "分两步稳稳落地，既不卡现在开跑，又不给未来埋雷：① 个体户起盘期：严格享受小规模/个体户季度免税额政策，所有协议和界面彻底禁用“工资/雇佣/押金/抽成”（全用“委托加工费 / 合作履约保证金 / 平台服务费”），网银批量打款留好每笔对应订单包台账，保证金专户记负债绝不挪用；② 放量临界点预警：后台设月流水监控提醒，接近免税临界点或准备扩全国大区前，提前迁有限公司并切入合规灵活用工/自然人代开通道解决成本票！",
+      options: [
+        { k: "A", t: "个体户期严守“承揽措辞 + 保证金专账不挪用 + 打款绑定订单台账 + 月流水临界预警”，公开发布买家小程序前必过律师二清确认", d: "前期零额外税筹费就能安全跑起来，到临界点系统自动提醒切换公司与代发通道。" },
+        { k: "B", t: "从第 1 单开始就直接接入第三方灵活用工代发平台（通常收 6%–8% 服务费）开发票", d: "票据最完美，但冷启动期每单白白多出 6%–8% 通道成本，完全没必要这么早花这笔冤枉钱。" }
+      ]
+    }
+  ];
+
+  var N = QUESTIONS.length;
+  var state = { answers: {}, updatedAt: 0 };
+
+  function load() {
+    try {
+      var raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        var parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === "object" && parsed.answers) state = parsed;
+      }
+    } catch (e) {}
+  }
+
+  function save() {
+    state.updatedAt = Date.now();
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      var el = document.getElementById("saveText");
+      if (el) el.textContent = "已自动保存在本机浏览器";
+    } catch (e) {}
+  }
+
+  function getAns(id) {
+    return state.answers[id] || { choice: "", other: "", note: "", defer: false };
+  }
+
+  function setAns(id, patch) {
+    var cur = getAns(id);
+    state.answers[id] = Object.assign({}, cur, patch);
+    save();
+  }
+
+  function isAnswered(q) {
+    var a = getAns(q.id);
+    if (a.defer) return true;
+    if (!a.choice) return false;
+    if (a.choice === "OTHER") return (a.other || "").trim().length > 0;
+    return true;
+  }
+
+  function countDone() {
+    var c = 0;
+    for (var i = 0; i < N; i++) if (isAnswered(QUESTIONS[i])) c++;
+    return c;
+  }
+
+  function getRoute() {
+    var h = (location.hash || "").replace(/^#/, "");
+    if (!h || h === "start") return { view: "start", idx: -1 };
+    if (h === "summary") return { view: "summary", idx: N };
+    var m = /^q(\d+)$/.exec(h);
+    if (m) {
+      var i = parseInt(m[1], 10) - 1;
+      if (i >= 0 && i < N) return { view: "q", idx: i };
+    }
+    return { view: "start", idx: -1 };
+  }
+
+  function go(hash) {
+    location.hash = "#" + hash;
+  }
+
+  function esc(s) {
+    return String(s || "").replace(/[&<>"']/g, function (ch) {
+      return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch];
+    });
+  }
+
+  function renderStrip(activeIdx) {
+    var strip = document.getElementById("strip");
+    var html = "";
+    for (var i = 0; i < N; i++) {
+      var q = QUESTIONS[i];
+      var a = getAns(q.id);
+      var cls = "seg";
+      if (a.defer) cls += " defer";
+      else if (isAnswered(q)) cls += " done";
+      if (i === activeIdx) cls += " cur";
+      html += '<button type="button" class="' + cls + '" data-act="goq" data-i="' + i + '" title="第 ' + (i + 1) + ' 题：' + esc(q.title) + '"></button>';
+    }
+    strip.innerHTML = html;
+
+    var done = countDone();
+    var pt = document.getElementById("progressText");
+    if (activeIdx >= 0 && activeIdx < N) {
+      pt.textContent = "第 " + (activeIdx + 1) + " / " + N + " 题 · 已完成 " + done + " 题";
+    } else if (activeIdx === N) {
+      pt.textContent = "汇总页 · 已完成 " + done + " / " + N + " 题";
+    } else {
+      pt.textContent = "已完成 " + done + " / " + N + " 题";
+    }
+  }
+
+  function renderStart() {
+    renderStrip(-1);
+    var done = countDone();
+    var app = document.getElementById("app");
+    app.innerHTML =
+      '<section class="card">' +
+        '<div class="eyebrow">一页一题 · 翻车场景推演 · 约 2 分钟</div>' +
+        '<h1>把最后 8 处“不稳定节点”彻底焊死</h1>' +
+        '<p style="margin:0;color:var(--muted)">刚才 5 项优化和“江浙沪圆心分大区扩展”已经全部写进设计文档。这里剩下的 8 题，每一题都给你还原了<strong>“如果不加固，上线后会怎么翻车”</strong>的真实场景，并配好了最省心的推荐解法。</p>' +
+        '<div class="cats">' +
+          '<div class="cat"><b>1–2 时效与停工</b><span>3-5天排队锁死、中途急事熔断</span></div>' +
+          '<div class="cat"><b>3–4 审照防漏防卡</b><span>比对卡3机位、志愿者2小时快审</span></div>' +
+          '<div class="cat"><b>5 准入防骗图解</b><span>非卖品考级小样 + 4步定型</span></div>' +
+          '<div class="cat"><b>6–8 村镇、防呆与财税</b><span>驿站自寄兜底、双表锁、税务安全线</span></div>' +
+        '</div>' +
+        '<div class="nav">' +
+          '<span class="hint">支持键盘 ← → 方向键翻页</span>' +
+          '<div class="navr">' +
+            (done > 0 ? '<button type="button" class="btn" data-act="gosum">直接看汇总</button>' : '') +
+            '<button type="button" class="btn primary" data-act="goq" data-i="0">' + (done > 0 ? '继续答题' : '开始第 1 题') + ' →</button>' +
+          '</div>' +
+        '</div>' +
+      '</section>';
+  }
+
+  function renderQuestion(i) {
+    renderStrip(i);
+    var q = QUESTIONS[i];
+    var a = getAns(q.id);
+    var optsHtml = "";
+
+    for (var j = 0; j < q.options.length; j++) {
+      var o = q.options[j];
+      var isRec = o.k === q.rec;
+      var isSel = a.choice === o.k;
+      optsHtml +=
+        '<div class="optwrap">' +
+          '<label class="opt' + (isSel ? ' sel' : '') + (isRec ? ' hasWhy' : '') + '">' +
+            '<input type="radio" name="opt" value="' + o.k + '"' + (isSel ? ' checked' : '') + '>' +
+            '<span class="badge">' + o.k + '</span>' +
+            '<span>' +
+              '<span class="otitle">' + esc(o.t) + (isRec ? ' <span class="pill">推荐</span>' : '') + '</span>' +
+              '<span class="odesc">' + esc(o.d) + '</span>' +
+            '</span>' +
+          '</label>' +
+          (isRec ? '<div class="why"><div class="lab">为什么推荐这个方案？</div><p>' + esc(q.why) + '</p></div>' : '') +
+        '</div>';
+    }
+
+    var isOther = a.choice === "OTHER";
+    optsHtml +=
+      '<div class="optwrap">' +
+        '<label class="opt' + (isOther ? ' sel' : '') + '">' +
+          '<input type="radio" name="opt" value="OTHER"' + (isOther ? ' checked' : '') + '>' +
+          '<span class="badge">自</span>' +
+          '<span>' +
+            '<span class="otitle">其他想法（我自己写）</span>' +
+            '<span class="odesc">按我下面写的来</span>' +
+          '</span>' +
+        '</label>' +
+      '</div>';
+
+    var app = document.getElementById("app");
+    app.innerHTML =
+      '<section class="card">' +
+        '<div class="eyebrow">' + esc(q.group) + '</div>' +
+        '<h1>' + esc(q.title) + '</h1>' +
+        '<div class="scene">' +
+          '<div class="lab">真实翻车场景带入</div>' +
+          '<p>' + esc(q.scene) + '</p>' +
+        '</div>' +
+        '<div class="opts">' + optsHtml + '</div>' +
+        (isOther
+          ? '<div class="field"><span class="lab">写下你的做法：</span><textarea id="otherText" data-field="other" placeholder="直接用大白话写就行…">' + esc(a.other) + '</textarea></div>'
+          : '') +
+        '<div class="field">' +
+          '<span class="lab">补充备注（选填）：</span>' +
+          '<textarea data-field="note" placeholder="没有补充可以空着">' + esc(a.note) + '</textarea>' +
+        '</div>' +
+        '<label class="defer">' +
+          '<input type="checkbox" id="deferBox"' + (a.defer ? ' checked' : '') + '>' +
+          '<span>这题先不定</span>' +
+        '</label>' +
+        '<div class="nav">' +
+          '<button type="button" class="btn" data-act="' + (i === 0 ? 'gostart' : 'goq') + '" data-i="' + (i - 1) + '">← 上一题</button>' +
+          '<div class="navr">' +
+            '<button type="button" class="btn recbtn" data-act="userec">采纳推荐（' + q.rec + '）并下一题</button>' +
+            (i === N - 1
+              ? '<button type="button" class="btn primary" data-act="gosum">去汇总页 →</button>'
+              : '<button type="button" class="btn primary" data-act="goq" data-i="' + (i + 1) + '">下一题 →</button>') +
+          '</div>' +
+        '</div>' +
+      '</section>';
+  }
+
+  function exportText() {
+    var lines = ["【无限天真 · 第 9 轮不稳定节点加固结果】", ""];
+    for (var i = 0; i < N; i++) {
+      var q = QUESTIONS[i];
+      var a = getAns(q.id);
+      var ansStr = "未选";
+      if (a.defer) {
+        ansStr = "先不定";
+      } else if (a.choice === "OTHER") {
+        ansStr = "自定义：" + (a.other || "").trim();
+      } else if (a.choice) {
+        var found = q.options.find(function (x) { return x.k === a.choice; });
+        ansStr = a.choice + "：" + (found ? found.t : "");
+        if (a.choice === q.rec) ansStr += "（推荐）";
+      }
+      lines.push((i + 1) + ". " + q.title);
+      lines.push("   决定：" + ansStr);
+      if ((a.note || "").trim()) lines.push("   备注：" + a.note.trim());
+    }
+    return lines.join("\n");
+  }
+
+  function renderSummary() {
+    renderStrip(N);
+    var done = countDone();
+    var listHtml = "";
+    for (var i = 0; i < N; i++) {
+      var q = QUESTIONS[i];
+      var a = getAns(q.id);
+      var badge = '<span class="tag miss">未选</span>';
+      var ansText = "还没做决定";
+      if (a.defer) {
+        badge = '<span class="tag warn">先不定</span>';
+        ansText = "留到后续再定";
+      } else if (a.choice === "OTHER") {
+        badge = '<span class="tag ok">自定义</span>';
+        ansText = (a.other || "").trim() || "（未填内容）";
+      } else if (a.choice) {
+        var found = q.options.find(function (x) { return x.k === a.choice; });
+        badge = '<span class="tag ok">选 ' + a.choice + (a.choice === q.rec ? ' · 推荐' : '') + '</span>';
+        ansText = found ? found.t : a.choice;
+      }
+      listHtml +=
+        '<div class="sumitem">' +
+          '<div class="sumno">#' + (i + 1) + '</div>' +
+          '<div>' +
+            '<div class="sumq">' + esc(q.title) + '</div>' +
+            '<div class="sumans">' + badge + esc(ansText) + '</div>' +
+            ((a.note || "").trim() ? '<div class="sumnote">备注：' + esc(a.note.trim()) + '</div>' : '') +
+          '</div>' +
+          '<div class="sumact"><button type="button" class="btn small" data-act="goq" data-i="' + i + '">修改</button></div>' +
+        '</div>';
+    }
+
+    var app = document.getElementById("app");
+    app.innerHTML =
+      '<section class="card">' +
+        '<div class="eyebrow">汇总与导出</div>' +
+        '<h1>确认你的 8 项加固决定</h1>' +
+        (done < N
+          ? '<div class="banner warn">还有 ' + (N - done) + ' 题没选。可以点右侧“修改”补齐，或直接一键填成推荐。</div>'
+          : '<div class="banner ok">8 处脆弱点已全部确认加固！点下方“复制全部答案”发给我，我立即更新进终版开发蓝图。</div>') +
+        '<div class="sumlist">' + listHtml + '</div>' +
+        '<div class="nav">' +
+          '<button type="button" class="btn" data-act="goq" data-i="' + (N - 1) + '">← 返回第 8 题</button>' +
+          '<div class="navr">' +
+            '<button type="button" class="btn" data-act="allrec">把未选题全部填成推荐</button>' +
+            '<button type="button" class="btn primary" data-act="copy">复制全部答案</button>' +
+          '</div>' +
+        '</div>' +
+        '<div id="copyArea"></div>' +
+      '</section>';
+  }
+
+  function render() {
+    var r = getRoute();
+    if (r.view === "start") renderStart();
+    else if (r.view === "summary") renderSummary();
+    else renderQuestion(r.idx);
+    window.scrollTo({ top: 0, behavior: "instant" });
+  }
+
+  document.addEventListener("click", function (e) {
+    var btn = e.target.closest("[data-act]");
+    if (!btn) return;
+    var act = btn.getAttribute("data-act");
+    if (act === "goq") {
+      go("q" + (parseInt(btn.getAttribute("data-i"), 10) + 1));
+    } else if (act === "gostart") {
+      go("start");
+    } else if (act === "gosum") {
+      go("summary");
+    } else if (act === "userec") {
+      var r = getRoute();
+      if (r.view === "q") {
+        var q = QUESTIONS[r.idx];
+        setAns(q.id, { choice: q.rec, defer: false });
+        go(r.idx === N - 1 ? "summary" : "q" + (r.idx + 2));
+      }
+    } else if (act === "allrec") {
+      for (var i = 0; i < N; i++) {
+        var qi = QUESTIONS[i];
+        if (!isAnswered(qi)) setAns(qi.id, { choice: qi.rec, defer: false });
+      }
+      render();
+    } else if (act === "copy") {
+      var txt = exportText();
+      var area = document.getElementById("copyArea");
+      function showBox(msg) {
+        area.innerHTML =
+          '<div class="banner ' + (msg ? 'ok' : 'warn') + '" style="margin-top:8px">' +
+            (msg || '浏览器限制自动复制，请全选下方文字手动复制发给我：') +
+          '</div>' +
+          '<div class="field" style="margin-top:8px"><textarea class="copybox" id="copyBox" readonly></textarea></div>';
+        var b = document.getElementById("copyBox");
+        b.value = txt;
+        if (!msg) { b.focus(); b.select(); }
+      }
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(txt).then(function () {
+          showBox("已复制到剪贴板！直接粘贴回对话发给我即可。");
+        }, function () { showBox(""); });
+      } else {
+        showBox("");
+      }
+    }
+  });
+
+  document.getElementById("app").addEventListener("change", function (e) {
+    var r = getRoute();
+    if (r.view !== "q") return;
+    var q = QUESTIONS[r.idx];
+    if (e.target.name === "opt") {
+      setAns(q.id, { choice: e.target.value, defer: false });
+      renderQuestion(r.idx);
+      if (e.target.value === "OTHER") {
+        var ta = document.getElementById("otherText");
+        if (ta) ta.focus();
+      }
+    } else if (e.target.id === "deferBox") {
+      setAns(q.id, { defer: e.target.checked });
+      renderStrip(r.idx);
+    }
+  });
+
+  document.getElementById("app").addEventListener("input", function (e) {
+    var r = getRoute();
+    if (r.view !== "q") return;
+    var q = QUESTIONS[r.idx];
+    var f = e.target.getAttribute("data-field");
+    if (f === "other") {
+      setAns(q.id, { other: e.target.value });
+      renderStrip(r.idx);
+    } else if (f === "note") {
+      setAns(q.id, { note: e.target.value });
+    }
+  });
+
+  document.addEventListener("keydown", function (e) {
+    var tag = (e.target.tagName || "").toLowerCase();
+    if (tag === "textarea" || tag === "input" || e.metaKey || e.ctrlKey || e.altKey) return;
+    var r = getRoute();
+    if (r.view !== "q") return;
+    if (e.key === "ArrowRight") go(r.idx === N - 1 ? "summary" : "q" + (r.idx + 2));
+    if (e.key === "ArrowLeft") go(r.idx === 0 ? "start" : "q" + r.idx);
+  });
+
+  window.addEventListener("hashchange", render);
+  load();
+  render();
+})();
+</script>
+</body>
+</html>

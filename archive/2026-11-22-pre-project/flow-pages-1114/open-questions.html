@@ -1,0 +1,111 @@
+<title>织女寄件待确认问题</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: 主线按对象分两组(抖店、顺丰),每题带「为什么问」,最高优先级的题在组内最前;京东和快递100收进折叠区作备选 */
+:root {
+  --bg: #f6f7f5;
+  --fg: #1d2421;
+  --muted: #5d6963;
+  --surface: #ffffff;
+  --line: #d3d9d5;
+  --accent: #1f6b4f;
+  --hot: #b25b00;
+  --hot-bg: #fff3e2;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #141a17; --fg: #e7ece9; --muted: #9aa6a0; --surface: #1d2622;
+    --line: #33403a; --accent: #6fcf9f; --hot: #f0a24a; --hot-bg: #33281a;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #141a17; --fg: #e7ece9; --muted: #9aa6a0; --surface: #1d2622;
+  --line: #33403a; --accent: #6fcf9f; --hot: #f0a24a; --hot-bg: #33281a;
+  color-scheme: dark;
+}
+body {
+  background: var(--bg); color: var(--fg);
+  font-family: -apple-system, "PingFang SC", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+  line-height: 1.65;
+  padding-block: 28px 48px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+main { max-width: 760px; margin: 0 auto; }
+h1 { font-size: 24px; margin: 0 0 6px; text-wrap: balance; }
+h2 { font-size: 18px; margin: 36px 0 4px; text-wrap: balance; }
+.lead { color: var(--muted); margin: 0 0 8px; font-size: 15px; }
+.who { color: var(--muted); font-size: 13px; margin: 0 0 12px; }
+ol { list-style: none; margin: 0; padding: 0; counter-reset: q; display: grid; gap: 10px; }
+li { counter-increment: q; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; min-width: 0; }
+li.hot { border-color: var(--hot); background: var(--hot-bg); }
+.q { margin: 0; font-weight: 600; }
+.q::before { content: counter(q) ". "; color: var(--accent); }
+.why { margin: 4px 0 0; color: var(--muted); font-size: 13.5px; }
+.tag { display: inline-block; font-size: 11px; font-weight: 700; color: var(--hot); border: 1px solid var(--hot); border-radius: 4px; padding: 0 5px; margin-left: 6px; vertical-align: 1px; }
+code { font-size: 12.5px; overflow-wrap: anywhere; }
+details { margin-top: 28px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); padding: 0 14px; }
+summary { cursor: pointer; font-weight: 600; padding: 12px 0; }
+details ol { padding-bottom: 14px; }
+details li { background: var(--bg); }
+.note { color: var(--muted); font-size: 13px; margin-top: 28px; }
+</style>
+
+<main>
+  <h1>织女寄件待确认问题</h1>
+  <p class="lead">方案是:抖店订单进小程序派给织女,织女一键寄件,走抖店官方电子面单 + 顺丰月结,手机蓝牙打印。下面是文档里没有答案、必须由对方确认的问题。标「最高」的会决定方案能否成立。京东和快递100已收起,放在页尾作备选。</p>
+
+  <h2>一、向抖店(工单或客服)</h2>
+  <p class="who">背景:商家自研的自用型应用,同一主体的店铺,个体工商户。权限包默认带电子面单(官方文档已证实),软著要求也已证实。</p>
+  <ol>
+    <li class="hot"><p class="q">取号接口 <code>newCreateOrder</code> 的 <code>sender_fetch_time</code>(要求上门取件时间段):顺丰是否支持?填了之后,取号时是否会向顺丰发起上门预约?<span class="tag">最高</span></p><p class="why">这可能是官方的预约上门通道。文档只有一句「要求上门取件时间段」,智能客服的回答引用了不相关的文档,不能采信。</p></li>
+    <li class="hot"><p class="q">个体工商户办软著,著作权人应填什么主体?「软著、开发者账号、授权店铺」三者主体一致,个体户怎么算一致?<span class="tag">最高</span></p><p class="why">类目资质必须提交软著。入驻指南只写了公司主体的强关联证明方式,个体户没写。</p></li>
+    <li><p class="q">蓝牙打印支持的打印机型号:官方只有一张图片清单。接口 <code>fetchBluetoothCmd</code> 返回的 CPCL 或 TSPL 指令,是否和抖店 App 的支持清单完全一致?</p><p class="why">选购打印机前要确认。接口文档提示过错误 101113「暂不支持该品牌的打印机型号」。</p></li>
+    <li><p class="q">店铺地址库上限是 500 个。电子面单的「面单发货地址」是否就是这个库,上限是否适用?一个顺丰月结账号下最多能有多少个合作?</p><p class="why">500 的出处是地址库的 FAQ,没有说明是否包含面单发货地址。</p></li>
+    <li><p class="q">电子面单的合作申请(新增合作、手机号验证)有没有接口或批量方式?</p><p class="why">地址库有 <code>/address/create</code>,但合作申请目前只找到后台手工操作,每位织女一次。</p></li>
+    <li><p class="q">顺丰直营合作申请的「手机号验证」具体怎么进行?每新增一个地址都要验证吗?审核一般多久?</p><p class="why">文档写「使用线下签约月结账号的手机号进行验证」。决定新增织女要不要有人守着那部手机。</p></li>
+    <li><p class="q">取号后运单号多久没有揽收轨迹会失效或被回收?取号和快递员上门之间最长能隔多久?</p><p class="why">织女取号后要等快递员,避免触发回收或超时。</p></li>
+    <li><p class="q">自动发货对 API 取号的订单是否生效?合单取号(<code>combine_orders</code>)的订单是否也能自动发货?</p><p class="why">文档写自动发货仅支持一单一包裹。不生效时,云函数要在揽收后自己调物流发货接口,这是多一段开发,不是死路。</p></li>
+    <li><p class="q">合单取号的条件是什么?预售或定制类订单是否有限制?</p><p class="why">需要把同一顾客的多个订单并成一个包裹。</p></li>
+    <li><p class="q">不调用解密接口、只用密文取号时,系统是否仍须部署在抖店云?</p><p class="why">运营规则只写了调用解密接口的系统必须在抖店云。</p></li>
+    <li><p class="q">取号接口是否收费?单价是多少?开放平台的接口费用账户也还没开通,需要确认开通后的计费方式。</p><p class="why">2026-06-16 的收费接口列表里没有它,但没有明说免费。</p></li>
+    <li><p class="q"><code>updateOrder</code> 修改发件人联系方式时,能否使用虚拟号?虚拟号的有效期是多久?</p><p class="why">保护织女手机号。该接口有「虚拟号绑定失败」的错误码。</p></li>
+  </ol>
+
+  <h2>二、向顺丰销售</h2>
+  <p class="who">背景:需要新签顺丰月结账号(你们现有的是京东月结,这个方案用不上)。织女取件地址分散在各地,多为个人住宅,此前个人住址登记成功过。</p>
+  <ol>
+    <li class="hot"><p class="q">抖店电子面单对顺丰取号时,是否由抖店替商家在顺丰系统下单?如果是,取号里的取件时段是否就是顺丰下订单接口的 <code>sendStartTm</code>,并按 <code>isDocall=1</code> 派快递员上门?如果不是,怎么预约:固定上门时间、联系网点,还是有预约接口?<span class="tag">最高</span></p><p class="why">顺丰开放平台的下订单接口有明确的预约上门参数(文档已读),但没说抖店取号是否经由它。如果不经由,备选是自己调顺丰下单接口带单号下单,但需要收件完整地址明文。</p></li>
+    <li class="hot"><p class="q">个体工商户能否线上自助签约顺丰月结?需要哪些资料?<span class="tag">最高</span></p><p class="why">顺丰 FAQ 写可找商务签约,或在丰桥开发者信息页线上自助签约,没写个体户是否可以。没有月结账号,这个方案走不起来。</p></li>
+    <li class="hot"><p class="q">月结协议是否覆盖各地分散的个人住宅取件地址?哪些地区无法揽收,偏远地区怎么处理?<span class="tag">最高</span></p><p class="why">决定能覆盖到哪些织女。我们不要求全覆盖。</p></li>
+    <li><p class="q">个体工商户签约月结的条件是什么?结算周期、保证金或额度?一个月结账号能绑定多少个取件地址?</p><p class="why">月结号要给所有织女共用,地址数量多。</p></li>
+    <li><p class="q">个人住宅上门取件的时段、最小起收件数、时效和运费如何计算?</p><p class="why">影响织女的接受度和定价。</p></li>
+    <li><p class="q">取号后未使用的运单号是否回收?取号后取消是否收费?</p><p class="why">买家退款或织女弃单时会产生未使用的单号。</p></li>
+    <li><p class="q">寄件人手机号可否使用虚拟号?有效期多久?</p><p class="why">保护织女手机号。</p></li>
+  </ol>
+
+  <details>
+    <summary>备选路线一:京东(已收起)</summary>
+    <ol>
+      <li class="hot"><p class="q">用抖店取到的京东单号,能否通过京东云打印(<code>render4Outer</code>)取蓝牙指令?京东下单接口的「带单号下单」能否使用抖店单号?<span class="tag">最高</span></p><p class="why">抖店蓝牙接口不含京东,官方 FAQ 已证实。云打印文档的前提写的是用京东下单产生的运单号。</p></li>
+      <li class="hot"><p class="q">抖店取号后,京东会不会自动上门?不会的话怎么预约?<span class="tag">最高</span></p><p class="why">与顺丰同一问题。</p></li>
+      <li><p class="q">月结协议是否覆盖分散的个人住宅取件地址?偏远地区怎么处理?</p><p class="why">决定能覆盖到哪些织女。</p></li>
+      <li><p class="q">预约取件场景下,收件地址是否可以只填到省市区?</p><p class="why">京东下单接口要求收件完整地址必填,云函数持有明文有合规风险。</p></li>
+      <li><p class="q">个体户能否作为自研商家接入京东物流开放平台?是否需要软著?有没有测试环境?</p><p class="why">文档写「无沙箱」,下单接口页却列出预发环境 <code>uat-api.jdl.com</code>,自相矛盾。</p></li>
+      <li><p class="q">一个月结账号下新增发货地址,京东侧是否要报备或绑定揽收站点?揽收前取消订单,单号是否回收、是否收费?</p><p class="why">文档只写取消后运单号不可重复使用。</p></li>
+    </ol>
+  </details>
+
+  <details>
+    <summary>备选路线二:快递100(已收起)</summary>
+    <ol>
+      <li><p class="q">个体工商户能否注册快递100企业版?需要哪些资料?</p><p class="why">这是能否开通的前提。抖店文档显示非官方电子面单可能被阻断,这条路只作后备。</p></li>
+      <li><p class="q">用 <code>net=douyin</code> 取到的抖店面单,能否直接用于快递100的上门取件?</p><p class="why">如果可以,就能同时满足抖店官方面单和上门预约。</p></li>
+      <li><p class="q">上门取件的面单图片短链(<code>returnType</code> 20)能否适配热敏蓝牙打印机?</p><p class="why">织女需要自己打印。</p></li>
+      <li><p class="q">部分快递取件后才有单号时,织女怎么在快递员上门前贴单?</p><p class="why">文档提到中通、圆通、顺心捷达需等「已取件」回调。</p></li>
+    </ol>
+  </details>
+
+  <p class="note">这些问题来自 2026-11-14 前对抖店开放平台、学习中心、京东物流开放平台和快递100 官方文档的核对,详见 research-result.md。顺丰一节已结合顺丰开放平台文档(下订单接口、FAQ)修订,没有实测。</p>
+</main>

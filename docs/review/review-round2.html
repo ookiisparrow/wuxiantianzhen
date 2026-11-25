@@ -1,0 +1,678 @@
+<title>立项结构复盘</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&family=Noto+Serif+SC:wght@600;700&display=swap">
+<style>
+/* Layout: 一页一题的单栏问卷；顶部是 15 段进度条，题目卡居中，推荐原因贴在被推荐的选项下方。 */
+:root {
+  --bg: #f3f5f2;
+  --surface: #ffffff;
+  --ink: #1d2623;
+  --muted: #5b6862;
+  --line: #d8ded9;
+  --accent: #2f5d8a;
+  --accent-ink: #ffffff;
+  --accent-soft: #e4edf6;
+  --rec: #2a7a58;
+  --rec-soft: #e2f1ea;
+  --warn: #9a6a12;
+  --warn-soft: #f6ecd3;
+  --danger: #a33a3a;
+  --font-body: "Noto Sans SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
+  --font-display: "Noto Serif SC", "Songti SC", "STSong", serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #111715; --surface: #1a2220; --ink: #e5ebe8; --muted: #9aa7a1; --line: #2d3935;
+    --accent: #7fb0e0; --accent-ink: #0f1a24; --accent-soft: #1d2d3d;
+    --rec: #6cc59d; --rec-soft: #18302a; --warn: #e0b45c; --warn-soft: #34291a; --danger: #e08585;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #111715; --surface: #1a2220; --ink: #e5ebe8; --muted: #9aa7a1; --line: #2d3935;
+  --accent: #7fb0e0; --accent-ink: #0f1a24; --accent-soft: #1d2d3d;
+  --rec: #6cc59d; --rec-soft: #18302a; --warn: #e0b45c; --warn-soft: #34291a; --danger: #e08585;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 16px; line-height: 1.7;
+  padding-block: 20px 56px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.wrap { max-width: 740px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+header.top { display: flex; flex-direction: column; gap: 10px; }
+.brandrow { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.brand { font-family: var(--font-display); font-weight: 700; font-size: 18px; letter-spacing: .02em; }
+.round { font-size: 13px; color: var(--muted); }
+.strip { display: grid; grid-template-columns: repeat(12, 1fr); gap: 4px; }
+.seg { height: 10px; border-radius: 3px; background: var(--line); border: 0; padding: 0; cursor: pointer; }
+.seg.done { background: var(--accent); }
+.seg.defer { background: var(--warn); }
+.seg.cur { outline: 2px solid var(--ink); outline-offset: 2px; }
+.seg:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.stripmeta { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; color: var(--muted); flex-wrap: wrap; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 24px; display: flex; flex-direction: column; gap: 18px; }
+.eyebrow { font-size: 12px; letter-spacing: .08em; color: var(--muted); }
+h1 { font-family: var(--font-display); font-size: 25px; line-height: 1.35; margin: 0; text-wrap: balance; }
+h2 { font-family: var(--font-display); font-size: 18px; margin: 0; }
+.ctx { background: var(--bg); border-radius: 8px; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; font-size: 15px; }
+.ctx p { margin: 0; }
+.ctx .lab { font-size: 12px; letter-spacing: .08em; color: var(--muted); }
+.src { font-size: 13px; color: var(--muted); }
+.opts { display: flex; flex-direction: column; gap: 10px; }
+.optwrap { display: flex; flex-direction: column; gap: 0; }
+.opt { display: grid; grid-template-columns: 28px 1fr; gap: 12px; padding: 14px; border: 1px solid var(--line); border-radius: 8px; cursor: pointer; background: var(--surface); }
+.opt:hover { border-color: var(--accent); }
+.opt.sel { border-color: var(--accent); background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent); }
+.opt.hasWhy { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+.opt input { position: absolute; opacity: 0; pointer-events: none; }
+.opt:has(input:focus-visible) { outline: 2px solid var(--ink); outline-offset: 2px; }
+.badge { width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--line); display: grid; place-items: center; font-size: 13px; font-weight: 700; color: var(--muted); }
+.opt.sel .badge { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.otitle { font-weight: 700; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.odesc { display: block; color: var(--muted); font-size: 15px; margin-top: 2px; }
+.pill { font-size: 12px; font-weight: 700; padding: 1px 8px; border-radius: 99px; background: var(--rec-soft); color: var(--rec); }
+.why { border: 1px solid var(--rec); border-top: 0; background: var(--rec-soft); border-radius: 0 0 8px 8px; padding: 12px 14px; font-size: 15px; display: flex; flex-direction: column; gap: 8px; }
+.why .lab { font-size: 12px; letter-spacing: .08em; color: var(--rec); font-weight: 700; }
+.why p { margin: 0; }
+button, .btn { font: inherit; }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 10px 18px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); cursor: pointer; text-decoration: none; min-height: 44px; }
+.btn:hover { border-color: var(--accent); }
+.btn:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
+.btn.small { min-height: 36px; padding: 6px 12px; font-size: 14px; }
+.btn[disabled] { opacity: .5; cursor: not-allowed; }
+.link { background: none; border: 0; padding: 0; color: var(--accent); cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+textarea { width: 100%; font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; min-height: 84px; resize: vertical; line-height: 1.6; }
+textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.field { display: flex; flex-direction: column; gap: 6px; }
+.field label, .field .lab { font-size: 14px; color: var(--muted); }
+.defer { display: flex; align-items: center; gap: 10px; font-size: 15px; }
+.defer input { width: 20px; height: 20px; accent-color: var(--warn); }
+.nav { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; align-items: center; }
+.navr { display: flex; gap: 10px; flex-wrap: wrap; }
+.state { font-size: 13px; color: var(--muted); }
+.state.fail { color: var(--danger); }
+.cats { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px; }
+.cat { border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; font-size: 15px; }
+.cat b { display: block; }
+.cat span { color: var(--muted); font-size: 14px; }
+.sumlist { display: flex; flex-direction: column; gap: 0; }
+.sumitem { display: grid; grid-template-columns: 34px 1fr auto; gap: 12px; padding: 14px 0; border-top: 1px solid var(--line); }
+.sumitem:first-child { border-top: 0; }
+.sumno { font-family: var(--font-display); font-weight: 700; color: var(--muted); }
+.sumq { font-weight: 700; }
+.sumans { font-size: 15px; margin-top: 2px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.sumnote { font-size: 14px; color: var(--muted); margin-top: 2px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.tag { font-size: 12px; padding: 1px 8px; border-radius: 99px; border: 1px solid var(--line); color: var(--muted); }
+.tag.warn { color: var(--warn); border-color: var(--warn); background: var(--warn-soft); }
+.tag.miss { color: var(--danger); border-color: var(--danger); }
+.banner { border-radius: 8px; padding: 12px 14px; font-size: 15px; }
+.banner.ok { background: var(--rec-soft); border: 1px solid var(--rec); }
+.banner.warn { background: var(--warn-soft); border: 1px solid var(--warn); }
+.copybox { width: 100%; min-height: 160px; font-size: 13px; }
+@media (max-width: 520px) {
+  .card { padding: 18px 16px; }
+  h1 { font-size: 22px; }
+  .sumitem { grid-template-columns: 28px 1fr; }
+  .sumitem .sumact { grid-column: 2; }
+}
+@media (prefers-reduced-motion: no-preference) { .opt, .btn { transition: border-color .12s, background .12s; } }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div class="brandrow">
+      <div class="brand">无限天真 · 立项结构复盘</div>
+      <div class="round" id="roundName"></div>
+    </div>
+    <div class="strip" id="strip" role="navigation" aria-label="题目进度"></div>
+    <div class="stripmeta"><span id="progressText"></span><span class="state" id="saveState"></span></div>
+  </header>
+  <main id="app"></main>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  var ROUND = { id: "r2", name: "第 2 轮 · 结构性问题" };
+  var LS_KEY = "wxtz-review-r2s";
+  var DOC_PATH = "rounds/r2-structure";
+
+  /* ---------- 题目（核心问题）---------- */
+  var Q = [
+    { id: "scale", cat: "规模与定位",
+      title: "12 个月后，你希望织女规模和月订单量到哪个量级？",
+      ctx: [
+        "当前决定：按 3–5 位种子织女设计；订单靠手工导出 CSV，运营在抖店批量在线寄件，审照靠运营，结款手工转账。",
+        "为什么影响结构：这条手工链条能撑到多大，取决于规模。在线寄件没有 API，地址库上限 500；10-17 的示例是每位织女每周约 6 件，要“持续单款打爆”需要的织女数远多于 5 位。目标量级决定要不要现在就为自动化留结构：抖店 API、ERP、审照分流、批量结款。",
+        "改动成本：规模目标变了，物流、审照、结款三条链都要重做。"
+      ],
+      src: "来源：docs/02 §2、§3；docs/03 §3.2、§12；10-17 差距分析",
+      opts: [
+        { id: "a", label: "20 位织女以内，月订单百单级：小而精，手工链条够用", desc: "一期设计基本不用动。" },
+        { id: "b", label: "20–100 位织女，月订单千单级：需要 ERP 或 API、审照分流、批量结款", desc: "一期按 a 做，数据结构为 b 留接缝。" },
+        { id: "c", label: "100–500 位织女，月订单数千到上万：必须自动化，500 地址上限会成为瓶颈", desc: "要提前设计抖店 API、自动结款等。" },
+        { id: "d", label: "500 位以上：需要重新设计物流结构（区域点或自建发货）", desc: "会推翻一期的一部分假设。" }
+      ],
+      rec: "b",
+      why: "按 a 建、为 b 留接缝，成本最低；c 和 d 目前没有任何数据依据。这里的量级是我估的，请直接在“其他”里改。选定后，后面几题里“要不要提前留接缝”就有了判断标准。" },
+
+    { id: "profit", cat: "规模与定位",
+      title: "钩织业务长期是引流成本，还是要自己能盈利？",
+      ctx: [
+        "当前决定：对外说“钩织商品不赚商品利润，直播间其他商品的利润覆盖运营成本”，并公开每单费用构成（含平台运营成本）。另有教程、图解服务、B 端服务费等收入（三期）。",
+        "为什么影响结构：这是对外的品牌承诺，说了之后再转为盈利会损失信任。运营成本（寄件、贴纸、封签、人工、售后、资金池）会随规模增长，靠其他商品覆盖是否可持续，决定你能做多大。它还决定费用构成里有没有一项“平台服务费”。",
+        "改动成本：对外口径一旦公开很难收回；账本里的账户设置也跟着变。"
+      ],
+      src: "来源：docs/01 §4；第 1 轮 claim 答案；docs/03 §8",
+      opts: [
+        { id: "a", label: "长期成本中心：不赚利润，盈利只来自直播间其他商品、教程、图解服务、B 端", desc: "承诺最强，可持续性靠外部收入。" },
+        { id: "b", label: "微利自养：费用构成里公开一项“平台服务费”，只覆盖运营成本，不追求利润", desc: "诚实、可持续，仍可说“不含利润”。" },
+        { id: "c", label: "钩织业务自己盈利：织女工价固定且公开，平台利润率也公开", desc: "商业模式最清晰，与你现在的说法不同。" },
+        { id: "d", label: "一期按 a，规模稳定后再评估 b", desc: "先不对外承诺“永远不赚钱”。" }
+      ],
+      rec: "b",
+      why: "你已经选了“公开费用构成并包含平台运营成本”，这在实际上就是 b。承诺“只覆盖成本、不含利润”可验证、可持续；纯粹的 a 会让钩织规模受限于直播间其他商品的利润。" },
+
+    { id: "entity", cat: "主体与关系",
+      title: "经营主体长期保持个体户吗？小程序主体选哪个？",
+      ctx: [
+        "当前决定：个体户（抖店店铺、快递100 企业账号都以此注册）；新项目要独立 AppID。",
+        "为什么影响结构：主体决定抖店开放平台资格（入驻写“企业”，个体户是否算未明）、软著与 AppID 与开发者主体必须一致、微信支付商户、对织女付款与开票、三期的商家和 B 端合同。小程序 AppID 的主体注册后很难更换。",
+        "改动成本：以后换成公司，要迁移抖店店铺、AppID 与云环境、快递100 账号、合同。（个体户能否注册对应类目的小程序，我没有查过，是推断。）"
+      ],
+      src: "来源：docs/02 §3；docs/05 闸门 4；旧需求 OV-4",
+      opts: [
+        { id: "a", label: "长期个体户，不换", desc: "最简单，三期 B 端与开放平台可能受限。" },
+        { id: "b", label: "一期个体户；二期前评估是否另设公司，AppID 注册时就选能长期使用的主体", desc: "把“难迁移的东西放哪个主体”提前想清楚。" },
+        { id: "c", label: "现在就注册公司，小程序、云环境、新店都放在公司下", desc: "一步到位，启动更慢、成本更高。" }
+      ],
+      rec: "b",
+      why: "个体户启动最快，但“很难迁移”的东西（AppID、云环境）要在一期开始前想好放哪里。这一题可以和闸门 1 的律师会计一起问，一次问清主体、织女关系和税务。" },
+
+    { id: "worker-relation", cat: "主体与关系",
+      title: "与织女的关系和付款通道，长期定成哪种？",
+      ctx: [
+        "当前决定：个体户向织女支付“加工费”；一期手工银行转账；织女与平台是承揽、劳务还是劳动关系未定（等律师）。",
+        "为什么影响结构：这决定付款通道、凭证、个税、保证金能不能收，也决定账本字段（银行卡还是平台账户、发票或凭证）。人少时手工转账没问题；规模上去后，个人转账与个税代扣会成为合规和人力负担。行业里常见的做法是通过“灵活用工平台”代发并开票（要付第三方服务费，我没有核实具体规则）。",
+        "改动成本：切换通道要改结款流程、织女注册信息、账本的付款流水。"
+      ],
+      src: "来源：旧需求 L6、T2；docs/03 §8；第 1 轮 agreement 答案",
+      opts: [
+        { id: "a", label: "承揽加工费 + 手工转账 + 织女提供收款凭证（现状延伸）", desc: "最简单，规模大后合规压力大。" },
+        { id: "b", label: "要求织女各自注册个体户，对公转账、取得发票", desc: "合规清楚，但门槛高，会挡掉很多手艺人。" },
+        { id: "c", label: "通过灵活用工或代发平台：织女与第三方签约，由第三方代发和代缴", desc: "规模化合规，有服务费和接入成本。" },
+        { id: "d", label: "一期 a；账本里把“收款方式”做成可切换的付款通道，二期前再决定是否切到 c", desc: "一期不增加负担，切换成本低。" }
+      ],
+      rec: "d",
+      why: "账本里已经有独立的 payout 流水，把“怎么付”抽象成通道，切换时不用动账；选哪条路需要律师和会计意见，不该现在拍脑袋。" },
+
+    { id: "ip", cat: "主体与关系",
+      title: "形象和图解的知识产权归谁？什么时候开始保护？",
+      ctx: [
+        "当前决定：图解的保护靠技术手段（水印、短时效链接、禁下载）；创作者按件固定分成；“贡献者/创作者”双轨是 11-14 提出的，没有逐条确认。",
+        "为什么影响结构：品牌价值在 IP 化的形象（天真宝宝等）和标准图解。形象与图解的版权归平台还是创作者？“无限天真”和形象名要不要尽早注册商标、登记著作权？一旦被他人抢注，或者外部创作者已经形成了历史权属，事后很难纠正。",
+        "改动成本：权属一旦模糊，会影响创作者合同、分成字段、对外授权和 B 端合作。"
+      ],
+      src: "来源：旧需求 PT-1~3、L3；docs/03 §10",
+      opts: [
+        { id: "a", label: "平台买断：平台出资委托创作，版权归平台，创作者拿一次性或按件报酬", desc: "平台控制力最强，创作者积极性可能更低。" },
+        { id: "b", label: "创作者保留版权、授权平台使用，按件分成（现设计倾向）", desc: "创作者友好，平台对 IP 的控制弱。" },
+        { id: "c", label: "分开：平台自有形象（天真宝宝）归平台；外部创作者的作品归创作者、授权平台", desc: "最灵活，需要两套合同。" },
+        { id: "d", label: "一期只做平台自有形象，外部创作者二期再谈；现在先做自有形象的著作权登记与商标检索", desc: "先保护手里最重要的东西。" }
+      ],
+      rec: "d",
+      why: "一期本来就只做自有原创和书面授权款，外部创作者要到二期；现在不决定外部权属不影响开工，但自有形象和“无限天真”的保护越早越好。商标检索我只能查官方公开库，不能代办注册。" },
+
+    { id: "fulfillment", cat: "履约结构",
+      title: "货长期都从织女家直发吗？要不要预留区域质检点？",
+      ctx: [
+        "当前决定：织女直发，不回仓（11-14、11-22 两次确认）。",
+        "为什么影响结构：直发意味着质量一致性完全靠“图解 + 审照 + 封签”；物流依赖织女所在城市是否在在线寄件名单、500 地址上限、每位织女一个发货地址；退货也要走专用地址。如果以后质量或物流出问题，想加“区域质检点/集货点”，会动 shipments、地址、审照、退货、账务几乎所有表。",
+        "改动成本：现在预留（shipments 加一个可空的 hubId），成本几乎为零；以后补，成本很高。"
+      ],
+      src: "来源：docs/03 §3、§7、§11.3；11-22 对话",
+      opts: [
+        { id: "a", label: "永久直发，不预留", desc: "最简单。" },
+        { id: "b", label: "直发为主；数据上预留“经由区域点”的可空字段，功能不做", desc: "几乎零成本的保险。" },
+        { id: "c", label: "直发只是一期；规模到一定量后改为区域集货 + 质检", desc: "质量一致性更强，成本和复杂度也更高。" }
+      ],
+      rec: "b",
+      why: "直发是你已经两次确认的方向，不动；但“如果规模上去后质量失控怎么办”这条退路，现在花很少的代价就能留，不留以后很贵。" },
+
+    { id: "yarn-supply", cat: "履约结构",
+      title: "线材由谁供：织女自备、平台统一供，还是供应商直发？",
+      ctx: [
+        "当前决定：织女自备 12 基础色；补充色号由织女每周申领，平台汇总打包寄出；线材池记账、不允许透支。",
+        "为什么影响结构：①“平台汇总打包寄出补色”意味着平台要采购、囤货、发货，这与“不囤货、不设仓库”的原则冲突；②12 基础色由织女各自去买，不同批次、不同店的同色号会有色差，直接影响成品一致性——你说过“同款不同人做出来不一样”是核心痛点。供线方式同时决定库存、质量、资金与税务（平台是不是在卖线给织女）。",
+        "改动成本：线材供应改了，色号管理、线材池、补色流程、税务口径全部要改。"
+      ],
+      src: "来源：docs/03 §5；旧需求 YR-1~7；10-15 business-brief 材料标准",
+      opts: [
+        { id: "a", label: "现状：织女自备 12 基础色，补色由平台每周汇总采购寄出（平台有少量库存）", desc: "与“不囤货”冲突，色差无人管。" },
+        { id: "b", label: "平台统一供线：所有线（含 12 基础色）集中采购，按订单配发，成本从应得里扣", desc: "质量最一致，平台要囤货、发货，资金压力大。" },
+        { id: "c", label: "织女全自购：每单工价含材料，按款定额，余料归织女，平台不供线", desc: "最轻，10-17 的原方案；色差和质量一致性最差。" },
+        { id: "d", label: "指定供应商直发：平台与线材店合作，织女下单后由供应商直接寄给织女，平台从线材池结算", desc: "平台不囤货，色号和批次由供应商统一。" }
+      ],
+      rec: "d",
+      why: "既不违反“不囤货”，也能统一色号和批次；一期种子织女少，可以由你手工替她们向指定店铺下单，这就是 d 的最小实现；等量上来再和供应商谈协议。a 是现在写的，但要平台自己备库存，与你的原则冲突。" },
+
+    { id: "multi-style", cat: "履约结构",
+      title: "一个订单里有多款商品时，怎么分给织女？",
+      ctx: [
+        "当前决定：同一订单包整包交给一位织女、一个包裹。",
+        "为什么影响结构：顾客一次买 3 个不同款，就要求同一位织女会做这 3 款、工时放得下（工时上限 70%）；这限制款式组合和候选织女范围，任一件拖后腿，整单就超期。",
+        "改动成本：以后改成“拆单、多位织女各寄各的”，订单包、袋码、运单、合单、账本、售后都要改。"
+      ],
+      src: "来源：docs/03 §3.1；旧需求 OR-1、BY-4",
+      opts: [
+        { id: "a", label: "整包一位织女（现设计）；一期固定款只有 1–3 个，多款订单很少", desc: "最简单。" },
+        { id: "b", label: "允许拆分：每款一位织女，各寄各的，顾客收到多个包裹", desc: "候选范围更大，运费和合单规则要重算。" },
+        { id: "c", label: "整包一位织女；同时把常买的组合做成独立套装款号，避免拆分", desc: "不改结构，靠商品设计规避。" }
+      ],
+      rec: "c",
+      why: "整包一位织女是你已经定下的结构；套装做成独立款号，既不用拆单，又能保证同一件作品出自同一双手。订单包里本来就是 items[] 数组，真要拆单时也有接缝。" },
+
+    { id: "qc-mode", cat: "履约结构",
+      title: "发货前的质检，一直是运营逐单审照吗？",
+      ctx: [
+        "当前决定：每个订单包完工后，织女拍成品照，运营审核通过才能装袋封签、才进入待发货清单；二期引入志愿评委。",
+        "为什么影响结构：审照在关键路径上，是同步阻塞环节。单量上去后，审照的人力和时延会直接拖慢 14 天交期。以后改成抽检或信用分分级，要改状态机（photo_review 是否必经）和责任划分。",
+        "改动成本：现在把审照做成“可按规则跳过的节点”，成本很小；等流程固化再改，影响整条状态机。"
+      ],
+      src: "来源：docs/03 §4.1、§11.4；旧需求 WV-10、SC 系列",
+      opts: [
+        { id: "a", label: "一直逐单前置审核：质量最稳，人力随单量线性增长", desc: "最简单。" },
+        { id: "b", label: "一期逐单审；状态机里把审照做成可按规则跳过的节点，稳定后按信用分抽检", desc: "为抽检预留接缝，现在不增加功能。" },
+        { id: "c", label: "织女自检 + 事后抽查，发货后发现问题再追责", desc: "最快，质量风险转给买家和抖店退货。" }
+      ],
+      rec: "b",
+      why: "一期种子织女少，逐单审本来就是你要的；但规模化一定会遇到审照瓶颈，状态机现在多留一条“免审”通道，几乎不花钱。c 会把质量问题变成顾客差评和退货。" },
+
+    { id: "channel", cat: "技术与扩展",
+      title: "订单入口只押抖店，还是现在就按多渠道设计？",
+      ctx: [
+        "当前决定：一期订单、寄件、售后、结算全在抖店；二期加小程序下单。订单模型已有 channel 抽象和外部订单号去重。",
+        "为什么影响结构：抖店规则变化、店铺处罚、封店都是你无法控制的风险；订单 CSV 字段、合单键、导入模板、售后规则都是抖店特有的。长期是否接视频号小店、快手、淘宝等，决定订单模型、合单键、对账和售后抽象的宽度。",
+        "改动成本：模型是渠道无关的，接新渠道只增加一个导入器；若写死抖店字段，以后要重构订单与账务。"
+      ],
+      src: "来源：docs/03 §11.3、§12；旧需求 CH 系列",
+      opts: [
+        { id: "a", label: "长期只做抖店 + 二期小程序，不考虑其他平台", desc: "最聚焦。" },
+        { id: "b", label: "抖店为主；订单模型保持渠道无关（现有设计），二期按需再接一个渠道", desc: "不增加成本的保险。" },
+        { id: "c", label: "一期就同时接两个渠道", desc: "分散平台风险，一期范围明显变大。" }
+      ],
+      rec: "b",
+      why: "现有设计已经是渠道无关的，保持就好，不需要新增工作。真正要避免的是：为了方便把抖店字段写进订单包或账本主表。" },
+
+    { id: "backend", cat: "技术与扩展",
+      title: "后端长期放微信云开发，会不会和抖店的要求冲突？",
+      ctx: [
+        "当前决定：一期用微信云开发（复用小棉鸭底座）；不接抖店 API，不解密收件人，只存密文与省市。",
+        "为什么影响结构：抖店规则（机器人答，待核）：调用收件人解密接口的系统，须部署在抖店云内（2023-08-31 起）。如果三期为了合单或寄件要解密收件人，后端就不能只放在微信云。后端落点还决定数据迁移成本和供应商锁定。",
+        "改动成本：把“买家信息处理”收口在一个独立模块，现在做几乎没有成本；以后要拆分出去，要改所有读写买家字段的地方。"
+      ],
+      src: "来源：docs/02 §1.3、§3；docs/03 §11.1",
+      opts: [
+        { id: "a", label: "永久不解密：只用密文和省市；后端留在微信云开发", desc: "最简单，限制了三期的选项。" },
+        { id: "b", label: "一期微信云开发；买家信息处理收口在一个模块；三期若需要解密，再拆出独立“抖店网关”服务部署到抖店云", desc: "不为未发生的需求提前付出，但留好拆分位置。" },
+        { id: "c", label: "现在就按可迁移设计：后端接口与存储做抽象，不用微信云特有能力", desc: "迁移最容易，一期开发更慢。" },
+        { id: "d", label: "一开始就用自建云或别的云，不用微信云开发", desc: "不复用底座，一期明显变慢。" }
+      ],
+      rec: "b",
+      why: "复用小棉鸭底座是你已经选的路；买家信息收口是个很小的约束，却把“三期需要解密”这件事变成可拆分的，而不是推翻重来。官方是否真如机器人所说要求入抖店云，三期前需要再核实。" },
+
+    { id: "org-layer", cat: "技术与扩展",
+      title: "织女账号只代表一个人吗？要不要预留“小团队/工作室”层级？",
+      ctx: [
+        "当前决定：织女 = 个人账号（容量、线材池、地址别名、扫码绑定、收款都挂在个人上）。三期计划有小团队和商家批量单。",
+        "为什么影响结构：一旦账号绑定个人，以后支持“一个工作室多人”（共享容量、一个收款账户、一个发货地址、多人扫码），要同时改容量、线材池、地址、结款、扫码绑定。",
+        "改动成本：现在在 users 加一个可空的 orgId，并把账本的收款方（payee）与账号分开，功能不做，成本几乎为零。"
+      ],
+      src: "来源：docs/03 §11.3、§12 三期；旧需求 §22",
+      opts: [
+        { id: "a", label: "不预留，三期再改", desc: "一期最简。" },
+        { id: "b", label: "预留 orgId 可空字段，账本收款方与账号分离；功能不做", desc: "几乎零成本的保险。" },
+        { id: "c", label: "现在就做团队账号", desc: "范围明显变大，一期不需要。" }
+      ],
+      rec: "b",
+      why: "和“直发保留 hubId”同一个思路：现在花几乎为零的代价留接缝，因为账号体系是最难回头改的一层。" }
+  ];
+  var CATS = ["规模与定位", "主体与关系", "履约结构", "技术与扩展"];
+  var N = Q.length;
+
+  /* ---------- 状态与存储 ---------- */
+  var S = { answers: {}, submittedAt: 0, updatedAt: 0 };
+  var dbh = null, saving = false, again = false, timer = null, saveMode = "local", lastCloud = 0;
+
+  function loadLocal() {
+    try {
+      var raw = localStorage.getItem(LS_KEY);
+      if (!raw) return;
+      var d = JSON.parse(raw);
+      if (d && d.answers) { S.answers = d.answers; S.submittedAt = d.submittedAt || 0; S.updatedAt = d.updatedAt || 0; }
+    } catch (e) {}
+  }
+  function persistLocal() {
+    try { localStorage.setItem(LS_KEY, JSON.stringify(S)); } catch (e) {}
+  }
+  function fmtTime(t) { var d = new Date(t); return d.getHours() + ":" + ("0" + d.getMinutes()).slice(-2); }
+  function setSave(mode) {
+    saveMode = mode;
+    var el = document.getElementById("saveState");
+    if (!el) return;
+    el.className = "state" + (mode === "fail" ? " fail" : "");
+    var t = { saving: "保存中…", cloud: "已自动保存 " + fmtTime(lastCloud || Date.now()), local: "仅保存在本机（云端不可用）", fail: "云端保存失败，已留在本机，下次改动会重试", none: "" }[mode] || "";
+    el.textContent = t;
+  }
+  function payload() {
+    return { round: ROUND.id, answers: S.answers, updatedAt: S.updatedAt, submittedAt: S.submittedAt || 0,
+      submittedISO: S.submittedAt ? new Date(S.submittedAt).toISOString() : "", readable: exportText() };
+  }
+  async function flush() {
+    if (saving) { again = true; return; }
+    saving = true;
+    if (dbh) setSave("saving");
+    try {
+      if (!dbh) throw { code: "nodb" };
+      await dbh.doc(DOC_PATH).set(payload());
+      lastCloud = Date.now();
+      setSave("cloud");
+    } catch (e) {
+      setSave(dbh ? "fail" : "local");
+    }
+    saving = false;
+    if (again) { again = false; flush(); }
+  }
+  function queueSave() {
+    persistLocal();
+    if (timer) clearTimeout(timer);
+    if (!dbh) { setSave("local"); return; }
+    setSave("saving");
+    timer = setTimeout(function () { timer = null; flush(); }, 700);
+  }
+  function touch() { S.updatedAt = Date.now(); }
+
+  /* ---------- 答案辅助 ---------- */
+  function getA(id) { return S.answers[id] || {}; }
+  function setA(id, patch) {
+    var a = Object.assign({}, getA(id), patch, { t: Date.now() });
+    S.answers[id] = a;
+    touch();
+    queueSave();
+  }
+  function status(q) {
+    var a = getA(q.id);
+    if (a.choice === "other" ? !!(a.text && a.text.trim()) : !!a.choice) return "done";
+    if (a.defer) return "defer";
+    return "empty";
+  }
+  function letter(q, id) { for (var i = 0; i < q.opts.length; i++) if (q.opts[i].id === id) return String.fromCharCode(65 + i); return "?"; }
+  function answerText(q) {
+    var a = getA(q.id);
+    if (!a.choice) return "";
+    if (a.choice === "other") return "其他：" + (a.text || "").trim();
+    for (var i = 0; i < q.opts.length; i++) if (q.opts[i].id === a.choice) return letter(q, a.choice) + ". " + q.opts[i].label;
+    return "";
+  }
+  function counts() {
+    var c = { done: 0, defer: 0, empty: 0 };
+    Q.forEach(function (q) { c[status(q)]++; });
+    return c;
+  }
+  function exportText() {
+    var lines = [ROUND.name + "（共 " + N + " 题）"];
+    Q.forEach(function (q, i) {
+      var a = getA(q.id), st = status(q);
+      var s = (i + 1) + ". [" + q.id + "] " + q.title + "\n   答：" + (answerText(q) || (st === "defer" ? "（先不定）" : "（未答）"));
+      if (a.defer && st === "done") s += "  [标记：需要更多信息]";
+      if (a.defer && st === "defer") s += "";
+      if (a.note && a.note.trim()) s += "\n   备注：" + a.note.trim();
+      lines.push(s);
+    });
+    return lines.join("\n");
+  }
+
+  /* ---------- 渲染 ---------- */
+  var app = document.getElementById("app");
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+  function route() {
+    var h = (location.hash || "").replace("#", "");
+    if (h === "summary") return { v: "summary" };
+    var m = /^q(\d+)$/.exec(h);
+    if (m) { var i = parseInt(m[1], 10) - 1; if (i >= 0 && i < N) return { v: "q", i: i }; }
+    return { v: "start" };
+  }
+  function go(h) { if (location.hash === "#" + h) render(); else location.hash = h; }
+
+  function renderStrip(cur) {
+    var el = document.getElementById("strip");
+    if (el.style) el.style.gridTemplateColumns = "repeat(" + N + ", 1fr)";
+    el.innerHTML = Q.map(function (q, i) {
+      var st = status(q);
+      return '<button class="seg ' + (st === "done" ? "done" : st === "defer" ? "defer" : "") + (cur === i ? " cur" : "") +
+        '" data-act="goq" data-i="' + i + '" title="第 ' + (i + 1) + " 题：" + esc(q.title) + '" aria-label="第 ' + (i + 1) + ' 题"></button>';
+    }).join("");
+    var c = counts();
+    document.getElementById("progressText").textContent = "已答 " + c.done + " / " + N + (c.defer ? "，待定 " + c.defer : "");
+  }
+
+  function viewStart() {
+    var c = counts();
+    var byCat = CATS.map(function (name) {
+      var n = Q.filter(function (q) { return q.cat === name; }).length;
+      return '<div class="cat"><b>' + name + "</b><span>" + n + " 题</span></div>";
+    }).join("");
+    var first = 0;
+    for (var i = 0; i < N; i++) if (status(Q[i]) === "empty") { first = i; break; }
+    var started = c.done + c.defer > 0;
+    return '<section class="card">' +
+      '<div class="eyebrow">' + esc(ROUND.name) + "</div>" +
+      "<h1>影响整体结构的 " + N + " 个问题</h1>" +
+      '<div class="ctx"><p>这一轮换个方向：不追问细节，只列大方向的、会牵动整体结构的、做完之后很难回头的问题。已经确认过的决定我也重新问一遍，因为它们一动，就会牵动整套设计。</p>' +
+      "<p>每题写了三件事：当前决定、为什么影响结构、改动成本。选项里通常有“保持现状”或接近的一项，不想改就选它；也可以选“其他”自己写。答案自动保存，答完点“提交”。上一版的 10 个细节追问先存档，等这一轮定了再决定要不要问。</p></div>" +
+      '<div class="cats">' + byCat + "</div>" +
+      '<div class="nav"><span class="state">选推荐只是默认建议，每题都可以改。不确定的题可以点“先不定”。</span>' +
+      '<div class="navr"><button class="btn primary" data-act="goq" data-i="' + first + '">' + (started ? "继续作答（第 " + (first + 1) + " 题）" : "开始第 1 题") + "</button>" +
+      (started ? '<button class="btn" data-act="gosum">查看汇总</button>' : "") + "</div></div></section>";
+  }
+
+  function viewQ(i) {
+    var q = Q[i], a = getA(q.id);
+    var opts = q.opts.map(function (o, k) {
+      var sel = a.choice === o.id;
+      var isRec = q.rec === o.id;
+      var why = isRec ? '<div class="why"><span class="lab">我为什么推荐这个</span><p>' + esc(q.why) + "</p></div>" : "";
+      return '<div class="optwrap"><label class="opt' + (sel ? " sel" : "") + (isRec ? " hasWhy" : "") + '" data-opt="' + o.id + '">' +
+        '<input type="radio" name="opt" value="' + o.id + '"' + (sel ? " checked" : "") + ">" +
+        '<span class="badge">' + String.fromCharCode(65 + k) + "</span>" +
+        '<span><span class="otitle">' + esc(o.label) + (isRec ? ' <span class="pill">推荐</span>' : "") + "</span>" +
+        '<span class="odesc">' + esc(o.desc) + "</span></span></label>" + why + "</div>";
+    }).join("");
+    var other = '<div class="optwrap"><label class="opt' + (a.choice === "other" ? " sel" : "") + '" data-opt="other">' +
+      '<input type="radio" name="opt" value="other"' + (a.choice === "other" ? " checked" : "") + ">" +
+      '<span class="badge">✎</span><span><span class="otitle">其他：我自己写答案</span>' +
+      '<span class="odesc">以上都不合适，或者想改其中某个选项。</span></span></label></div>' +
+      '<div class="field" id="otherField"' + (a.choice === "other" ? "" : " hidden") + ">" +
+      '<label for="otherText">你的答案</label><textarea id="otherText" data-field="text" placeholder="写下你想怎么处理">' + esc(a.text || "") + "</textarea></div>";
+    var last = i === N - 1;
+    return '<section class="card">' +
+      '<div class="eyebrow">' + esc(q.cat) + " · 第 " + (i + 1) + " / " + N + " 题</div>" +
+      "<h1>" + esc(q.title) + "</h1>" +
+      '<div class="ctx"><span class="lab">为什么问这个</span>' + q.ctx.map(function (p) { return "<p>" + esc(p) + "</p>"; }).join("") +
+      '<span class="src">' + esc(q.src) + "</span></div>" +
+      '<div class="opts" role="radiogroup" aria-label="选项">' + opts + other + "</div>" +
+      '<div class="field"><label for="noteText">补充说明或理由（可选）</label><textarea id="noteText" data-field="note" placeholder="例如：为什么选这个、有什么顾虑、需要我先查什么">' + esc(a.note || "") + "</textarea></div>" +
+      '<label class="defer"><input type="checkbox" id="deferBox" data-field="defer"' + (a.defer ? " checked" : "") + "> 这题我先不定，需要更多信息或先调研</label>" +
+      '<div class="nav"><button class="btn" data-act="' + (i === 0 ? "gostart" : "goq") + '" data-i="' + (i - 1) + '">' + (i === 0 ? "返回说明" : "上一题") + "</button>" +
+      '<div class="navr">' + (q.rec ? '<button class="btn small" data-act="usrec">采用推荐</button>' : '') +
+      '<button class="btn primary" data-act="' + (last ? "gosum" : "goq") + '" data-i="' + (i + 1) + '">' + (last ? "完成，查看汇总" : "下一题") + "</button></div></div>" +
+      "</section>";
+  }
+
+  function viewSummary() {
+    var c = counts();
+    var dirty = S.submittedAt && S.updatedAt > S.submittedAt;
+    var banner = "";
+    if (S.submittedAt && !dirty) banner = '<div class="banner ok">已于 ' + new Date(S.submittedAt).toLocaleString() + " 提交。回到对话告诉我“已提交”，我会读取答案。</div>";
+    else if (S.submittedAt && dirty) banner = '<div class="banner warn">提交之后你又修改了答案，请重新提交。</div>';
+    else if (c.empty) banner = '<div class="banner warn">还有 ' + c.empty + " 题没有回答，可以先提交，也可以回去补。未答的题我会当作“没想好”，不会替你决定。</div>";
+    var items = Q.map(function (q, i) {
+      var st = status(q), a = getA(q.id);
+      var ans = answerText(q);
+      var tags = "";
+      if (st === "empty") tags = '<span class="tag miss">未答</span>';
+      if (a.defer) tags += ' <span class="tag warn">先不定</span>';
+      return '<div class="sumitem"><div class="sumno">' + (i + 1) + "</div><div>" +
+        '<div class="sumq">' + esc(q.title) + "</div>" +
+        (ans ? '<div class="sumans">' + esc(ans) + "</div>" : "") +
+        (a.note && a.note.trim() ? '<div class="sumnote">备注：' + esc(a.note.trim()) + "</div>" : "") +
+        '</div><div class="sumact">' + tags + ' <button class="link" data-act="goq" data-i="' + i + '">修改</button></div></div>';
+    }).join("");
+    return '<section class="card"><div class="eyebrow">' + esc(ROUND.name) + "</div><h1>汇总与提交</h1>" + banner +
+      '<div class="sumlist">' + items + "</div>" +
+      '<div class="nav"><button class="btn" data-act="goq" data-i="' + (N - 1) + '">回到第 ' + N + " 题</button>" +
+      '<div class="navr"><button class="btn" data-act="copy">复制全部答案</button>' +
+      '<button class="btn primary" data-act="submit">' + (S.submittedAt ? "重新提交" : "提交") + "</button></div></div>" +
+      '<div id="copyArea"></div></section>';
+  }
+
+  function render() {
+    var r = route();
+    if (r.v === "q") { app.innerHTML = viewQ(r.i); renderStrip(r.i); }
+    else if (r.v === "summary") { app.innerHTML = viewSummary(); renderStrip(-1); }
+    else { app.innerHTML = viewStart(); renderStrip(-1); }
+    setSave(saveMode);
+    if (r.v !== "q") window.scrollTo(0, 0);
+  }
+
+  /* ---------- 事件 ---------- */
+  function curQ() { var r = route(); return r.v === "q" ? Q[r.i] : null; }
+  function refreshSel() {
+    var q = curQ(); if (!q) return;
+    var a = getA(q.id);
+    app.querySelectorAll(".opt").forEach(function (el) {
+      var on = el.getAttribute("data-opt") === a.choice;
+      el.classList.toggle("sel", on);
+      var inp = el.querySelector("input"); if (inp) inp.checked = on;
+    });
+    var f = document.getElementById("otherField"); if (f) f.hidden = a.choice !== "other";
+    var cb = document.getElementById("deferBox"); if (cb) cb.checked = !!a.defer;
+    renderStrip(route().i);
+  }
+
+  app.addEventListener("click", function (e) {
+    var t = e.target.closest("[data-act]");
+    if (t) {
+      var act = t.getAttribute("data-act");
+      if (act === "goq") { go("q" + (parseInt(t.getAttribute("data-i"), 10) + 1)); return; }
+      if (act === "gostart") { go("start"); return; }
+      if (act === "gosum") { go("summary"); return; }
+      if (act === "usrec") { var q = curQ(); if (q && q.rec) { setA(q.id, { choice: q.rec }); refreshSel(); } return; }
+      if (act === "copy") { doCopy(); return; }
+      if (act === "submit") { doSubmit(); return; }
+    }
+  });
+  document.getElementById("strip").addEventListener("click", function (e) {
+    var t = e.target.closest("[data-act='goq']");
+    if (t) go("q" + (parseInt(t.getAttribute("data-i"), 10) + 1));
+  });
+  app.addEventListener("change", function (e) {
+    var q = curQ(); if (!q) return;
+    if (e.target.name === "opt") {
+      setA(q.id, { choice: e.target.value });
+      refreshSel();
+      if (e.target.value === "other") { var ta = document.getElementById("otherText"); if (ta) ta.focus(); }
+    } else if (e.target.id === "deferBox") {
+      setA(q.id, { defer: e.target.checked });
+      refreshSel();
+    }
+  });
+  app.addEventListener("input", function (e) {
+    var q = curQ(); if (!q) return;
+    var f = e.target.getAttribute("data-field");
+    if (f === "text") { setA(q.id, { text: e.target.value }); renderStrip(route().i); }
+    else if (f === "note") { setA(q.id, { note: e.target.value }); }
+  });
+  document.addEventListener("keydown", function (e) {
+    var tag = (e.target.tagName || "").toLowerCase();
+    if (tag === "textarea" || tag === "input" || e.metaKey || e.ctrlKey || e.altKey) return;
+    var r = route();
+    if (r.v !== "q") return;
+    if (e.key === "ArrowRight") go(r.i === N - 1 ? "summary" : "q" + (r.i + 2));
+    if (e.key === "ArrowLeft") go(r.i === 0 ? "start" : "q" + r.i);
+  });
+  window.addEventListener("hashchange", render);
+
+  async function doSubmit() {
+    S.submittedAt = Date.now();
+    S.updatedAt = S.submittedAt;
+    persistLocal();
+    if (timer) { clearTimeout(timer); timer = null; }
+    render();
+    await flush();
+    render();
+    if (!dbh) {
+      var area = document.getElementById("copyArea");
+      if (area) area.innerHTML = '<div class="banner warn" style="margin-top:12px">云端保存不可用，我读不到你的答案。请点“复制全部答案”，把文字贴回对话。</div>';
+    }
+  }
+  function doCopy() {
+    var text = exportText();
+    var area = document.getElementById("copyArea");
+    function fallback() {
+      area.innerHTML = '<div class="field" style="margin-top:12px"><span class="lab">浏览器不允许自动复制，请手动全选复制：</span><textarea class="copybox" id="copyBox" readonly></textarea></div>';
+      var b = document.getElementById("copyBox"); b.value = text; b.focus(); b.select();
+    }
+    try {
+      navigator.clipboard.writeText(text).then(function () {
+        area.innerHTML = '<div class="banner ok" style="margin-top:12px">已复制到剪贴板。</div>';
+      }, fallback);
+    } catch (e) { fallback(); }
+  }
+
+  /* ---------- 启动 ---------- */
+  document.getElementById("roundName").textContent = ROUND.name + " · 共 " + N + " 题";
+  loadLocal();
+  render();
+  setSave("none");
+
+  (async function connect() {
+    try {
+      var db = await (window.claude && window.claude.use ? window.claude.use("db") : null);
+      if (!db) { if (Object.keys(S.answers).length) setSave("local"); else setSave("local"); return; }
+      dbh = db;
+      var snap = await Promise.race([
+        db.doc(DOC_PATH).get(),
+        new Promise(function (_, rej) { setTimeout(function () { rej({ code: "timeout" }); }, 10000); })
+      ]);
+      var cloudUpdated = 0;
+      if (snap && snap.exists) {
+        var d = snap.data() || {};
+        cloudUpdated = d.updatedAt || 0;
+        var ca = d.answers || {};
+        Object.keys(ca).forEach(function (id) {
+          if (!S.answers[id] || (ca[id].t || 0) > (S.answers[id].t || 0)) S.answers[id] = ca[id];
+        });
+        S.submittedAt = Math.max(S.submittedAt || 0, d.submittedAt || 0);
+        S.updatedAt = Math.max(S.updatedAt || 0, cloudUpdated);
+        persistLocal();
+        var ae = document.activeElement;
+        if (!ae || !/^(TEXTAREA|INPUT)$/.test(ae.tagName)) render();
+        lastCloud = cloudUpdated || Date.now();
+        setSave("cloud");
+      } else {
+        setSave("local");
+        setSave(Object.keys(S.answers).length ? "saving" : "none");
+      }
+      if (S.updatedAt > cloudUpdated && Object.keys(S.answers).length) queueSave();
+      else if (!Object.keys(S.answers).length) setSave("none");
+    } catch (e) {
+      setSave(dbh ? "fail" : "local");
+    }
+  })();
+})();
+</script>

@@ -1,0 +1,766 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>无限天真 · 核心状态机交互架构图（Archify 风格）</title>
+<style>
+:root {
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --surface-2: #f0f2f6;
+  --ink: #161c24;
+  --muted: #5d6a7a;
+  --line: #d6dde6;
+  --grid: rgba(22, 28, 36, 0.055);
+  --shadow: 0 6px 24px rgba(15, 23, 42, 0.06);
+
+  /* 顾客小程序 mp-buyer（胶囊形 · 蓝靛系） */
+  --buyer-fill: #e8f1ff;
+  --buyer-stroke: #2563eb;
+  --buyer-text: #1e3a8a;
+
+  /* 织女小程序 mp-weaver（六边形 · 翡翠绿系） */
+  --weaver-fill: #e4f7ef;
+  --weaver-stroke: #0f9d68;
+  --weaver-text: #064e3b;
+
+  /* 运营后台 & 云端引擎（方卡片 · 石板灰/紫系） */
+  --sys-fill: #f3f0ff;
+  --sys-stroke: #6d28d9;
+  --sys-text: #3b0764;
+
+  /* 异常/取消/售后终态（斜角虚线 · 暖橙红系） */
+  --err-fill: #fff1f0;
+  --err-stroke: #dc2626;
+  --err-text: #7f1d1d;
+
+  /* 正常终态（双框绿金） */
+  --done-fill: #ecfdf5;
+  --done-stroke: #059669;
+  --done-text: #065f46;
+
+  --edge: #7b8a9e;
+  --edge-happy: #2563eb;
+  --edge-err: #dc2626;
+}
+:root[data-theme="dark"] {
+  --bg: #0d1117;
+  --surface: #151b23;
+  --surface-2: #1d2530;
+  --ink: #e6edf3;
+  --muted: #8b98a9;
+  --line: #2a3441;
+  --grid: rgba(230, 237, 243, 0.05);
+  --shadow: 0 8px 28px rgba(0, 0, 0, 0.4);
+
+  --buyer-fill: #152544;
+  --buyer-stroke: #60a5fa;
+  --buyer-text: #dbeafe;
+
+  --weaver-fill: #102e25;
+  --weaver-stroke: #34d399;
+  --weaver-text: #d1fae5;
+
+  --sys-fill: #23193b;
+  --sys-stroke: #a78bfa;
+  --sys-text: #ede9fe;
+
+  --err-fill: #35181b;
+  --err-stroke: #f87171;
+  --err-text: #fee2e2;
+
+  --done-fill: #0f2d22;
+  --done-stroke: #10b981;
+  --done-text: #a7f3d0;
+
+  --edge: #6b7a8f;
+  --edge-happy: #60a5fa;
+  --edge-err: #f87171;
+}
+* { box-sizing: border-box; }
+html, body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, -apple-system, sans-serif;
+}
+.app {
+  display: grid;
+  grid-template-rows: auto auto 1fr;
+  height: 100vh;
+}
+header.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 18px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+  flex-wrap: wrap;
+}
+.titlebox {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.titlebox h1 {
+  font-size: 16px;
+  margin: 0;
+  font-weight: 700;
+}
+.titlebox .sub {
+  font-size: 12px;
+  color: var(--muted);
+}
+.tabs {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.tab {
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--muted);
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all .15s ease;
+}
+.tab:hover { color: var(--ink); border-color: var(--buyer-stroke); }
+.tab.active {
+  background: var(--buyer-stroke);
+  border-color: var(--buyer-stroke);
+  color: #fff;
+}
+.tools {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.tbtn {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  padding: 5px 10px;
+  border-radius: 7px;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.tbtn:hover { border-color: var(--buyer-stroke); }
+.tbtn.on {
+  background: var(--weaver-fill);
+  border-color: var(--weaver-stroke);
+  color: var(--weaver-text);
+  font-weight: 600;
+}
+.legendbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 8px 18px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--line);
+  font-size: 12.5px;
+  flex-wrap: wrap;
+}
+.legends {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+.leg {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-weight: 600;
+}
+.leg svg { width: 32px; height: 18px; overflow: visible; }
+.hint { color: var(--muted); font-size: 12px; }
+
+.stage-wrap {
+  position: relative;
+  overflow: hidden;
+  background-color: var(--bg);
+  background-image:
+    linear-gradient(var(--grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size: 24px 24px;
+  cursor: grab;
+}
+.stage-wrap.dragging { cursor: grabbing; }
+svg#canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+  user-select: none;
+}
+
+/* SVG Node & Edge styles */
+.node { cursor: pointer; transition: filter .15s ease; }
+.node:hover { filter: drop-shadow(0 4px 10px rgba(37, 99, 235, 0.22)); }
+.node.selected .shape { stroke-width: 3.2px; }
+.node text.ntitle { font-size: 13.5px; font-weight: 700; text-anchor: middle; pointer-events: none; }
+.node text.ncode { font-size: 10.5px; font-family: ui-monospace, Menlo, monospace; text-anchor: middle; opacity: 0.78; pointer-events: none; }
+.node text.ntag { font-size: 10px; font-weight: 700; text-anchor: middle; pointer-events: none; }
+
+.node.buyer .shape { fill: var(--buyer-fill); stroke: var(--buyer-stroke); stroke-width: 2; }
+.node.buyer text { fill: var(--buyer-text); }
+
+.node.weaver .shape { fill: var(--weaver-fill); stroke: var(--weaver-stroke); stroke-width: 2; }
+.node.weaver text { fill: var(--weaver-text); }
+
+.node.sys .shape { fill: var(--sys-fill); stroke: var(--sys-stroke); stroke-width: 2; }
+.node.sys text { fill: var(--sys-text); }
+
+.node.err .shape { fill: var(--err-fill); stroke: var(--err-stroke); stroke-width: 1.8; stroke-dasharray: 5 3; }
+.node.err text { fill: var(--err-text); }
+
+.node.done .shape { fill: var(--done-fill); stroke: var(--done-stroke); stroke-width: 2.4; }
+.node.done text { fill: var(--done-text); }
+
+.edge-path { fill: none; stroke: var(--edge); stroke-width: 1.8; }
+.edge-path.happy { stroke: var(--edge-happy); stroke-width: 2.2; }
+.edge-path.err { stroke: var(--edge-err); stroke-width: 1.7; stroke-dasharray: 5 4; }
+.edge-trace {
+  fill: none;
+  stroke: var(--edge-happy);
+  stroke-width: 3;
+  stroke-dasharray: 8 18;
+  opacity: 0;
+  pointer-events: none;
+}
+body.trace-on .edge-trace {
+  opacity: 0.9;
+  animation: dashFlow 1.2s linear infinite;
+}
+@keyframes dashFlow {
+  to { stroke-dashoffset: -26; }
+}
+.edge-label-bg { fill: var(--surface); opacity: 0.92; rx: 4; ry: 4; stroke: var(--line); stroke-width: 0.8; }
+.edge-label { font-size: 11px; fill: var(--muted); text-anchor: middle; dominant-baseline: central; pointer-events: none; }
+
+/* Inspector Drawer */
+.drawer {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 310px;
+  max-height: calc(100% - 28px);
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  padding: 16px;
+  display: none;
+  flex-direction: column;
+  gap: 10px;
+}
+.drawer.open { display: flex; }
+.dhead {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  gap: 8px;
+}
+.dclose {
+  border: 0;
+  background: var(--surface-2);
+  color: var(--muted);
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 15px;
+}
+.dpill {
+  display: inline-block;
+  font-size: 11.5px;
+  font-weight: 700;
+  padding: 2px 9px;
+  border-radius: 99px;
+}
+.dpill.buyer { background: var(--buyer-fill); color: var(--buyer-text); border: 1px solid var(--buyer-stroke); }
+.dpill.weaver { background: var(--weaver-fill); color: var(--weaver-text); border: 1px solid var(--weaver-stroke); }
+.dpill.sys { background: var(--sys-fill); color: var(--sys-text); border: 1px solid var(--sys-stroke); }
+.dpill.err { background: var(--err-fill); color: var(--err-text); border: 1px solid var(--err-stroke); }
+.dpill.done { background: var(--done-fill); color: var(--done-text); border: 1px solid var(--done-stroke); }
+.drawer h3 { margin: 2px 0 0; font-size: 16px; }
+.drawer .code { font-family: ui-monospace, Menlo, monospace; font-size: 12px; color: var(--muted); }
+.drawer .sec { border-top: 1px solid var(--line); padding-top: 8px; font-size: 13px; line-height: 1.6; }
+.drawer .sec b { display: block; font-size: 11.5px; color: var(--muted); margin-bottom: 2px; }
+</style>
+</head>
+<body class="trace-on">
+<div class="app">
+  <header class="topbar">
+    <div class="titlebox">
+      <h1>无限天真 · 核心状态机交互图</h1>
+      <span class="sub">按端区分节点形状 · 点击节点看副作用</span>
+    </div>
+    <nav class="tabs" id="tabs"></nav>
+    <div class="tools">
+      <button class="tbtn on" id="traceBtn" title="开关主路径动态流向">流向动画：开</button>
+      <button class="tbtn" id="zoomOut">－</button>
+      <button class="tbtn" id="zoomReset">适配</button>
+      <button class="tbtn" id="zoomIn">＋</button>
+      <button class="tbtn" id="themeBtn">切换深浅色</button>
+    </div>
+  </header>
+
+  <div class="legendbar">
+    <div class="legends">
+      <span class="leg">
+        <svg viewBox="0 0 32 18"><rect x="1" y="2" width="30" height="14" rx="7" ry="7" fill="var(--buyer-fill)" stroke="var(--buyer-stroke)" stroke-width="2"/></svg>
+        顾客小程序 (mp-buyer · 含粉丝志愿者) —— 胶囊圆角
+      </span>
+      <span class="leg">
+        <svg viewBox="0 0 32 18"><polygon points="6,1 26,1 31,9 26,17 6,17 1,9" fill="var(--weaver-fill)" stroke="var(--weaver-stroke)" stroke-width="2"/></svg>
+        织女小程序 (mp-weaver) —— 六边形
+      </span>
+      <span class="leg">
+        <svg viewBox="0 0 32 18"><rect x="1" y="2" width="30" height="14" rx="3" ry="3" fill="var(--sys-fill)" stroke="var(--sys-stroke)" stroke-width="2"/></svg>
+        运营后台 / 云端引擎 / 外部通道 —— 方卡片
+      </span>
+      <span class="leg">
+        <svg viewBox="0 0 32 18"><polygon points="5,1 27,1 31,5 31,13 27,17 5,17 1,13 1,5" fill="var(--err-fill)" stroke="var(--err-stroke)" stroke-width="1.8" stroke-dasharray="4 2"/></svg>
+        取消 / 售后 / 异常终态 —— 切角虚线
+      </span>
+    </div>
+    <span class="hint">滚轮缩放 · 拖拽画布 · 点击任意节点查看详情</span>
+  </div>
+
+  <div class="stage-wrap" id="stageWrap">
+    <svg id="canvas">
+      <defs>
+        <marker id="arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+          <path d="M 1 1 L 9 5 L 1 9 z" fill="var(--edge)"/>
+        </marker>
+        <marker id="arr-happy" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M 1 1 L 9 5 L 1 9 z" fill="var(--edge-happy)"/>
+        </marker>
+        <marker id="arr-err" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+          <path d="M 1 1 L 9 5 L 1 9 z" fill="var(--edge-err)"/>
+        </marker>
+      </defs>
+      <g id="viewport"></g>
+    </svg>
+
+    <aside class="drawer" id="drawer">
+      <div class="dhead">
+        <div>
+          <span class="dpill" id="dPill"></span>
+          <h3 id="dTitle"></h3>
+          <div class="code" id="dCode"></div>
+        </div>
+        <button class="dclose" id="dClose">×</button>
+      </div>
+      <div class="sec"><b>谁来操作 / 触发端</b><div id="dActor"></div></div>
+      <div class="sec"><b>核心规则与副作用</b><div id="dDesc"></div></div>
+      <div class="sec"><b>涉及集合与关键字段</b><div id="dSchema"></div></div>
+    </aside>
+  </div>
+</div>
+
+<script>
+(function () {
+  var DIAGRAMS = [
+    {
+      id: "order_pkg",
+      name: "1. 订单包主状态机",
+      w: 1320, h: 780,
+      nodes: [
+        { id: "mp_pay", x: 130, y: 110, w: 185, h: 58, role: "buyer", tag: "顾客小程序", title: "小程序下单支付", code: "mp_wechat", actor: "顾客在 mp-buyer 下单付款（微信支付）", desc: "下单前检查剩余工时70%容量；支付回调成功后直接进入待派单。", schema: "orders / payments / ledgerEntries(pay:...)" },
+        { id: "dy_csv", x: 130, y: 245, w: 185, h: 58, role: "sys", tag: "运营后台", title: "抖店导单·合单窗", code: "confirming", actor: "运营 8:30 导入抖店订单+售后 CSV", desc: "按 sha256 合单键合并同一顾客多单；派单前先拦截退款单。", schema: "externalOrderIndex / orderPackages(confirming)" },
+
+        { id: "wait", x: 400, y: 175, w: 180, h: 58, role: "sys", tag: "云端整点引擎", title: "待派单", code: "waiting_dispatch", actor: "云函数 cron（8:00–21:00 整点）", desc: "按优先级筛候选：余货→回头客→同省→同大区→全国；硬校验禁止自买自接。", schema: "orderPackages / config.capacityRule" },
+        { id: "offered", x: 660, y: 175, w: 196, h: 62, role: "weaver", tag: "织女小程序", title: "已派单待确认", code: "offered", actor: "织女在 mp-weaver 一键接单或拒接", desc: "1小时内确认（50分钟补短信）；系统通过小程序领线记录已掌握色号，无需扫线团条码；拒接/超时退回重派。", schema: "dispatchOffers / notifications" },
+        { id: "making", x: 935, y: 175, w: 196, h: 62, role: "weaver", tag: "织女小程序", title: "队首制作中", code: "making", actor: "织女在 mp-weaver 看歌词图解制作", desc: "仅队首解锁短时效水印图解+防截屏；需审单先裸拍成品照送审；高信用免审单一次完成拍成品+扫袋码封签直发。", schema: "patterns / orderPackages(reviewMode)" },
+
+        { id: "review", x: 935, y: 360, w: 205, h: 62, role: "buyer", tag: "顾客端·粉丝志愿者", title: "成品照盲审", code: "photo_review", actor: "粉丝志愿者在 mp-buyer 审核入口盲审（异常转运营）", desc: "图像指纹查重；志愿者看不到织女身份，强制停留>=8秒；极差>=3或命中查重转运营终审。", schema: "photoReviews / volunteerVotes" },
+        { id: "seal", x: 660, y: 360, w: 196, h: 62, role: "weaver", tag: "织女小程序", title: "扫袋码·装袋封签", code: "awaiting_seal", actor: "织女审过后再装袋、扫袋码贴纸、贴封签拍照", desc: "审过才绑定袋码避免返工浪费贴纸；拍封签留底照并选时段，提交后下一包自动升为队首。", schema: "bagStickers(bound) / shipments.sealedPhotoFileId" },
+        { id: "ready", x: 400, y: 360, w: 185, h: 58, role: "sys", tag: "物流调度层", title: "待发货取号", code: "ready_to_ship", actor: "抖店：中通吉ERP/在线寄件；小程序：快递100 API", desc: "小程序自动预约上门取件（失败重约<=2次）；抖店由运营按织女批量打单。", schema: "shipments(douyin_erp / kuaidi100_pickup)" },
+
+        { id: "shipped", x: 400, y: 530, w: 185, h: 58, role: "sys", tag: "物流在途", title: "已寄出在途", code: "shipped", actor: "快递100回调 / 抖店运单回导", desc: "运单号写入 shipments，顾客可在 mp-buyer 实时查物流。", schema: "shipments.trackingNo" },
+        { id: "signed", x: 660, y: 530, w: 196, h: 58, role: "buyer", tag: "顾客小程序", title: "顾客签收·7天检视", code: "signed", actor: "顾客收货查验（未拆封签可7天退货）", desc: "记录 signedAt，settleEligibleAt = signedAt + 7天。", schema: "orderPackages.signedAt" },
+        { id: "settled_ready", x: 935, y: 530, w: 185, h: 58, role: "sys", tag: "复式账本", title: "待结款·已计提", code: "settled_ready", actor: "云函数每日 02:00 扫描满7天无售后", desc: "纯工价(EXP_CRAFT_COST)进待结款，材料费(EXP_MATERIAL_COST)专款进线材池，绝不从织女纯工价倒扣；每日对账校验 weaverAccounts。", schema: "ledgerEntries(accrue:...) / weaverAccounts" },
+        { id: "settled", x: 1185, y: 530, w: 165, h: 58, role: "done", tag: "正常终态", title: "已结款完成", code: "settled", actor: "每14天运营批量打款确认", desc: "生成 settlementBatches 并写入 payout 复式分录。", schema: "settlementBatches / ledgerEntries(payout:...)" },
+
+        /* 异常与分支 */
+        { id: "c_full", x: 400, y: 48, w: 175, h: 52, role: "err", tag: "异常终态", title: "派单前取消秒退", code: "cancelled_full", actor: "顾客在接单前申请退款", desc: "小程序直接自动秒退微信原路；不扣织女任何分。", schema: "refunds(autoApproved=true)" },
+        { id: "hold", x: 660, y: 48, w: 175, h: 52, role: "err", tag: "异常挂起", title: "人工待处理", code: "manual_hold", actor: "运营介入改派或联系买家", desc: "超5轮/24h无人接、队首卡单、或快递100重约2次失败。", schema: "auditLog / tickets" },
+        { id: "c_made", x: 1185, y: 175, w: 185, h: 56, role: "err", tag: "取消转余货", title: "开工后取消·转余货", code: "cancelled_made", actor: "顾客开工后退款（运营审过）", desc: "固定款织女继续做完照拿工价，成品入 weaverStock 在小程序现货区48h发。", schema: "weaverStock / products(ready_stock)" },
+        { id: "lost", x: 400, y: 685, w: 195, h: 56, role: "err", tag: "丢件兜底", title: "快递丢损·照结工价", code: "lost_compensated", actor: "平台兜底赔买家 + 找快递理赔", desc: "织女已按标准交寄，照常给织女结工价，平台承担差额入 EXP_LOSS_COMP。", schema: "refunds(logistics_loss) / ledgerEntries" },
+        { id: "qual", x: 660, y: 685, w: 205, h: 56, role: "err", tag: "质量退款", title: "瑕疵退全款·不结工价", code: "quality_refunded", actor: "顾客拍图售后，运营核实瑕疵", desc: "退买家全款；该单工价不结，但不倒扣织女其他钱（扣信用分）。", schema: "refunds(quality_defect)" },
+        { id: "ret", x: 935, y: 685, w: 185, h: 56, role: "err", tag: "无理由退货", title: "7天未拆封签退货", code: "returned", actor: "顾客未拆封签寄回，运营验签", desc: "买家承担退货运费，平台验封签完好后退款。", schema: "refunds(buyer_return_7d)" }
+      ],
+      edges: [
+        { from: "mp_pay", to: "wait", label: "支付回调成功", type: "happy" },
+        { from: "dy_csv", to: "wait", label: "合单窗结束", type: "happy" },
+        { from: "wait", to: "offered", label: "整点派单", type: "happy" },
+        { from: "offered", to: "making", label: "一键接单", type: "happy" },
+        { from: "offered", to: "seal", label: "余货复用·不扣线直通装袋", type: "happy" },
+        { from: "making", to: "review", label: "需审单·裸拍成品照", type: "happy" },
+        { from: "making", to: "ready", label: "免审单·一次封签直发", type: "happy", curve: 70 },
+        { from: "review", to: "seal", label: "盲审通过", type: "happy" },
+        { from: "seal", to: "ready", label: "扫袋码+封签拍照", type: "happy" },
+        { from: "ready", to: "shipped", label: "ERP/快递100出单号", type: "happy" },
+        { from: "shipped", to: "signed", label: "物流签收", type: "happy" },
+        { from: "signed", to: "settled_ready", label: "满7天无售后", type: "happy" },
+        { from: "settled_ready", to: "settled", label: "14天批量结款", type: "happy" },
+
+        { from: "offered", to: "wait", label: "拒接/1h超时", type: "normal", curve: 45 },
+        { from: "review", to: "making", label: "驳回重做", type: "err", curve: 55 },
+        { from: "wait", to: "c_full", label: "派单前秒退", type: "err" },
+        { from: "wait", to: "hold", label: "无人接/超24h", type: "err" },
+        { from: "making", to: "c_made", label: "开工后退款", type: "err" },
+        { from: "shipped", to: "lost", label: "快递丢件/破损", type: "err" },
+        { from: "signed", to: "qual", label: "核实质量瑕疵", type: "err" },
+        { from: "signed", to: "ret", label: "未拆封签退货", type: "err" },
+        { from: "lost", to: "settled", label: "照常结织女工价", type: "normal", curve: 145 }
+      ]
+    },
+    {
+      id: "funnel",
+      name: "2. 织女四步准入漏斗(已定型)",
+      w: 1220, h: 560,
+      nodes: [
+        { id: "entry", x: 165, y: 190, w: 220, h: 66, role: "buyer", tag: "织女报名 + 粉丝志愿者盲审", title: "第1步·初筛报名合页", code: "apply_entry", actor: "校验江浙沪等开放大区 + 8道常识自动判分 + 3张旧作盲审", desc: "小测验系统毫秒级先判，过了旧作自动进粉丝志愿者盲审（<=2次）；过审即明确告知200元保证金规则。", schema: "recruitFunnel(apply_entry) / depositNoticeAckAt" },
+        { id: "trial", x: 475, y: 190, w: 220, h: 66, role: "buyer", tag: "非卖品小样·防泄密", title: "第2步·考级小样拍照", code: "trial_make", actor: "钩专用【非卖品考级小样】(40min) → 3机位拍照盲审", desc: "绝不泄漏在售爆款商业图解！涵盖核心针法与装配难点，驳回最多重提 2 次。", schema: "photoReviews(funnel_trial)" },
+        { id: "sample", x: 785, y: 190, w: 210, h: 66, role: "sys", tag: "运营后台实物终验", title: "第3步·寄小样实物验收", code: "sample_inspect", actor: "织女自费寄小样（邮费不报销）→ 运营入库终验", desc: "允许修改重寄 1 次；同时确认该地址支持上门取件或村镇驿站自寄。", schema: "recruitFunnel.sampleAttempts <= 1" },
+        { id: "dep", x: 785, y: 385, w: 215, h: 64, role: "weaver", tag: "织女小程序·门槛", title: "第4步·缴200元保证金", code: "pending_deposit", actor: "终验通过后缴付 200 元合作履约保证金", desc: "记负债科目 LIAB_WEAVER_DEPOSIT 专账不挪用；退出无违约原路全额退还。", schema: "recruitFunnel.depositStatus / ledgerEntries" },
+        { id: "ok", x: 1085, y: 385, w: 190, h: 62, role: "done", tag: "正式转正", title: "开通接单·初始化基础线", code: "approved", actor: "分配 pool='mp'，初始化 12 基础色 wholeSkeins=1", desc: "先接 12 基础色订单攒线材池额度，表现优异可晋升直播池。", schema: "users.pool='mp' / yarnInventory" },
+        { id: "rej", x: 430, y: 415, w: 215, h: 60, role: "err", tag: "淘汰冷却", title: "驳回·冷却30天", code: "rejected", actor: "超重提次数或不在开放大区", desc: "设置 cooldownUntil = now + 30天。", schema: "recruitFunnel.cooldownUntil" }
+      ],
+      edges: [
+        { from: "entry", to: "trial", label: "过审·告知200元保证金", type: "happy" },
+        { from: "trial", to: "sample", label: "拍照过关·自费寄实物", type: "happy" },
+        { from: "sample", to: "dep", label: "实物终验通过", type: "happy" },
+        { from: "dep", to: "ok", label: "200元到账转正", type: "happy" },
+        { from: "entry", to: "rej", label: "非开放区/超2次未过", type: "err" },
+        { from: "trial", to: "rej", label: "超2次未过", type: "err" },
+        { from: "sample", to: "rej", label: "重寄仍不过", type: "err" },
+        { from: "rej", to: "entry", label: "满30天可重申", type: "normal", curve: -75 }
+      ]
+    },
+    {
+      id: "review",
+      name: "3. 粉丝志愿者盲审(2h快审)",
+      w: 1080, h: 520,
+      nodes: [
+        { id: "sub", x: 145, y: 240, w: 210, h: 66, role: "weaver", tag: "织女小程序·3机位", title: "传3张标准比对卡照片", code: "submit", actor: "正面压刻度比对卡 + 背面藏线 + 侧面饱满度", desc: "随袋码寄发标准刻度比对卡；提取 pHash 指纹查重 + 微信 mediaCheckAsync 安全检测。", schema: "photoReviews.photoSlots / imageHashes" },
+        { id: "pend", x: 445, y: 240, w: 225, h: 66, role: "buyer", tag: "顾客端·粉丝志愿者", title: "持证志愿者匿名盲审", code: "pending", actor: "连过5道次品找茬题才可上岗；每卡停留>=8秒", desc: "2小时SLA快审：超2h未满5票时，若满2票高准确率全优自动放行，否则转运营秒审，绝不耽误当天快递！", schema: "volunteers / photoReviews.slaDeadlineAt" },
+        { id: "adm", x: 690, y: 95, w: 195, h: 60, role: "sys", tag: "运营后台", title: "转运营终审", code: "needs_admin", actor: "运营在 admin 后台仲裁", desc: "触发条件：指纹查重命中、志愿者评分极差>=3分、或暂无可用志愿者。", schema: "photoReviews.duplicateFlag" },
+        { id: "pass", x: 930, y: 180, w: 170, h: 58, role: "done", tag: "审核通过", title: "放行下一节点", code: "approved", actor: "驱动订单进装袋封签或漏斗进下一轮", desc: "记录最终得分并更新织女信用分与志愿者校准准确率。", schema: "photoReviews(approved)" },
+        { id: "fail", x: 930, y: 340, w: 170, h: 58, role: "err", tag: "审核驳回", title: "驳回并附原因", code: "rejected", actor: "退回织女重做或重拍", desc: "不展示原始分数，仅反馈具体问题事实与参考样例。", schema: "photoReviews.rejectReason" }
+      ],
+      edges: [
+        { from: "sub", to: "pend", label: "生成指纹入队", type: "happy" },
+        { from: "pend", to: "pass", label: "票满且均分达标", type: "happy" },
+        { from: "pend", to: "fail", label: "票满且不达标", type: "err" },
+        { from: "pend", to: "adm", label: "查重命中 / 极差>=3", type: "err" },
+        { from: "adm", to: "pass", label: "运营终审通过", type: "happy" },
+        { from: "adm", to: "fail", label: "运营终审驳回", type: "err" }
+      ]
+    },
+    {
+      id: "yarn",
+      name: "4. 线材申领与代发",
+      w: 1100, h: 500,
+      nodes: [
+        { id: "res", x: 145, y: 210, w: 195, h: 64, role: "weaver", tag: "织女小程序", title: "提交申领·占坑", code: "reserved", actor: "织女在 mp-weaver 每周按需申领", desc: "必须通过小程序领线材，系统才能精准掌握织女拥有的色号；校验满 3 团或单款材料包。", schema: "yarnClaims(claim_weaver_week)" },
+        { id: "conf", x: 420, y: 210, w: 195, h: 60, role: "sys", tag: "复式账校验", title: "校验不透支·扣池", code: "confirmed", actor: "云函数聚合 LIAB_YARN_POOL 余额", desc: "严格校验 余额 >= 线材成本 + 锁定运费表(含偏远加价)，足额写 yarn_out。", schema: "ledgerEntries(yarn_out:...)" },
+        { id: "disp", x: 700, y: 210, w: 205, h: 60, role: "sys", tag: "运营后台·直发", title: "导表已发主供应商", code: "dispatched", actor: "运营每周截单导CSV发主店并付款", desc: "已合并 exported 与 shipped！不强制回导几百条单号，供应商回执表留微信备查即可。", schema: "yarnClaims.exportBatchId" },
+        { id: "rec", x: 965, y: 210, w: 205, h: 64, role: "weaver", tag: "织女小程序", title: "确认收货·整团入账", code: "received", actor: "织女收货后点击确认（可选拍到货合照）", desc: "按整团数(wholeSkeins)入账；每单按BOM克重累加，逢满1团(50g)主动询问剩余完整团数一键校准，误差永不滚雪球。", schema: "users.yarnInventory[yarnCode]" },
+        { id: "can", x: 420, y: 395, w: 195, h: 56, role: "err", tag: "拒绝/冲正", title: "余额不足或撤回", code: "cancelled", actor: "余额不足立即删占坑；截单前撤回写冲正", desc: "严禁线材池透支，平台零垫资。", schema: "yarnClaims(cancelled)" }
+      ],
+      edges: [
+        { from: "res", to: "conf", label: "余额充足·扣池", type: "happy" },
+        { from: "conf", to: "disp", label: "每周截单导表直发", type: "happy" },
+        { from: "disp", to: "rec", label: "织女确认收货", type: "happy" },
+        { from: "res", to: "can", label: "余额不足拒绝", type: "err" },
+        { from: "conf", to: "can", label: "截单前撤回冲正", type: "err" }
+      ]
+    },
+    {
+      id: "refund",
+      name: "5. 小程序退款单",
+      w: 1060, h: 500,
+      nodes: [
+        { id: "req", x: 145, y: 230, w: 200, h: 62, role: "buyer", tag: "顾客小程序", title: "顾客发起退款/售后", code: "request", actor: "顾客在 mp-buyer 订单页点击申请退款", desc: "自动判断当前订单包所处阶段：派单前 vs 开工后 vs 签收后。", schema: "refunds / tickets" },
+        { id: "arev", x: 440, y: 335, w: 195, h: 60, role: "sys", tag: "运营后台", title: "运营人工审核", code: "pending_review", actor: "运营判定退款原因与织女工价策略", desc: "开工后固定款→转余货照结工价；质量瑕疵→不结工价不倒扣；丢件→照结工价。", schema: "refunds.weaverCraftPolicy" },
+        { id: "ing", x: 690, y: 175, w: 195, h: 60, role: "sys", tag: "微信支付接口", title: "微信退款处理中", code: "refunding", actor: "云函数调微信支付原路退款 API", desc: "派单前取消直接跳过人工审进入此态，实现秒退。", schema: "refunds.wxRefundId" },
+        { id: "ok", x: 945, y: 175, w: 165, h: 58, role: "done", tag: "退款成功", title: "原路退款完成", code: "succeeded", actor: "webhook-wxpay 回调确认", desc: "自动写入不可变复式账冲减收入/记兜底支出。", schema: "ledgerEntries(qual_ref / loss_comp)" },
+        { id: "rej", x: 690, y: 375, w: 175, h: 56, role: "err", tag: "驳回售后", title: "审核驳回", code: "rejected", actor: "如已拆封签且无质量瑕疵", desc: "写明驳回理由通知顾客，订单继续正常结款流转。", schema: "refunds(rejected)" },
+        { id: "fail", x: 945, y: 335, w: 165, h: 56, role: "err", tag: "通道失败", title: "退款失败待重试", code: "failed", actor: "商户余额不足或网络异常", desc: "运营处理余额后手动触发重试，幂等键防重复退。", schema: "refunds(failed)" }
+      ],
+      edges: [
+        { from: "req", to: "ing", label: "派单前·自动秒退", type: "happy" },
+        { from: "req", to: "arev", label: "开工后/签收后", type: "normal" },
+        { from: "arev", to: "ing", label: "运营审过发起退款", type: "happy" },
+        { from: "arev", to: "rej", label: "不符合退款条件", type: "err" },
+        { from: "ing", to: "ok", label: "微信回调成功+记账", type: "happy" },
+        { from: "ing", to: "fail", label: "通道异常", type: "err" },
+        { from: "fail", to: "ing", label: "运营重试", type: "normal", curve: 45 }
+      ]
+    }
+  ];
+
+  var roleNames = {
+    buyer: "顾客小程序 (mp-buyer · 含粉丝志愿者)",
+    weaver: "织女小程序 (mp-weaver)",
+    sys: "运营后台 / 云端引擎 / 外部通道",
+    err: "取消 / 售后 / 异常态",
+    done: "正常终态"
+  };
+
+  var curIdx = 0;
+  var scale = 1, tx = 0, ty = 0;
+  var dragging = false, sx = 0, sy = 0;
+  var selectedId = null;
+
+  var svg = document.getElementById("canvas");
+  var vp = document.getElementById("viewport");
+  var stageWrap = document.getElementById("stageWrap");
+
+  function applyTransform() {
+    vp.setAttribute("transform", "translate(" + tx + "," + ty + ") scale(" + scale + ")");
+  }
+
+  function fitView() {
+    var d = DIAGRAMS[curIdx];
+    var rect = stageWrap.getBoundingClientRect();
+    var pad = 44;
+    var sw = (rect.width - pad * 2) / d.w;
+    var sh = (rect.height - pad * 2) / d.h;
+    scale = Math.min(1.08, Math.max(0.45, Math.min(sw, sh)));
+    tx = (rect.width - d.w * scale) / 2;
+    ty = (rect.height - d.h * scale) / 2;
+    applyTransform();
+  }
+
+  function shapePath(n) {
+    var hw = n.w / 2, hh = n.h / 2;
+    if (n.role === "buyer") {
+      // 胶囊圆角矩形 (Pill / Stadium)
+      return '<rect class="shape" x="' + (-hw) + '" y="' + (-hh) + '" width="' + n.w + '" height="' + n.h + '" rx="' + hh + '" ry="' + hh + '"/>';
+    }
+    if (n.role === "weaver") {
+      // 六边形 (Hexagon)
+      var c = 18;
+      var pts = [
+        (-hw + c) + "," + (-hh),
+        (hw - c) + "," + (-hh),
+        hw + ",0",
+        (hw - c) + "," + hh,
+        (-hw + c) + "," + hh,
+        (-hw) + ",0"
+      ].join(" ");
+      return '<polygon class="shape" points="' + pts + '"/>';
+    }
+    if (n.role === "err") {
+      // 切角矩形 (Beveled Octagon)
+      var b = 10;
+      var pts2 = [
+        (-hw + b) + "," + (-hh),
+        (hw - b) + "," + (-hh),
+        hw + "," + (-hh + b),
+        hw + "," + (hh - b),
+        (hw - b) + "," + hh,
+        (-hw + b) + "," + hh,
+        (-hw) + "," + (hh - b),
+        (-hw) + "," + (-hh + b)
+      ].join(" ");
+      return '<polygon class="shape" points="' + pts2 + '"/>';
+    }
+    if (n.role === "done") {
+      // 双框圆角矩形
+      return '<rect class="shape" x="' + (-hw) + '" y="' + (-hh) + '" width="' + n.w + '" height="' + n.h + '" rx="10" ry="10"/>' +
+             '<rect x="' + (-hw + 4) + '" y="' + (-hh + 4) + '" width="' + (n.w - 8) + '" height="' + (n.h - 8) + '" rx="7" ry="7" fill="none" stroke="var(--done-stroke)" stroke-width="1" opacity="0.6"/>';
+    }
+    // 运营/云端引擎：方卡片矩形
+    return '<rect class="shape" x="' + (-hw) + '" y="' + (-hh) + '" width="' + n.w + '" height="' + n.h + '" rx="6" ry="6"/>';
+  }
+
+  function anchorPoint(n, tx2, ty2) {
+    var dx = tx2 - n.x, dy = ty2 - n.y;
+    var hw = n.w / 2 + 2, hh = n.h / 2 + 2;
+    if (dx === 0 && dy === 0) return { x: n.x, y: n.y };
+    var sx2 = Math.abs(dx) > 0.001 ? hw / Math.abs(dx) : 1e9;
+    var sy2 = Math.abs(dy) > 0.001 ? hh / Math.abs(dy) : 1e9;
+    var t = Math.min(sx2, sy2);
+    return { x: n.x + dx * t, y: n.y + dy * t };
+  }
+
+  function esc(s) {
+    return String(s || "").replace(/[&<>"]/g, function (c) {
+      return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c];
+    });
+  }
+
+  function renderDiagram() {
+    var d = DIAGRAMS[curIdx];
+    var map = {};
+    d.nodes.forEach(function (n) { map[n.id] = n; });
+
+    var html = '<g class="edges">';
+    d.edges.forEach(function (e) {
+      var a = map[e.from], b = map[e.to];
+      if (!a || !b) return;
+      var p1 = anchorPoint(a, b.x, b.y);
+      var p2 = anchorPoint(b, a.x, a.y);
+      var mx = (p1.x + p2.x) / 2, my = (p1.y + p2.y) / 2;
+      var pathD, lx, ly;
+      if (e.curve) {
+        var dx = p2.x - p1.x, dy = p2.y - p1.y;
+        var len = Math.hypot(dx, dy) || 1;
+        var nx = -dy / len, ny = dx / len;
+        var cx = mx + nx * e.curve, cy = my + ny * e.curve;
+        pathD = "M " + p1.x + " " + p1.y + " Q " + cx + " " + cy + " " + p2.x + " " + p2.y;
+        lx = 0.25 * p1.x + 0.5 * cx + 0.25 * p2.x;
+        ly = 0.25 * p1.y + 0.5 * cy + 0.25 * p2.y;
+      } else {
+        pathD = "M " + p1.x + " " + p1.y + " L " + p2.x + " " + p2.y;
+        lx = mx; ly = my;
+      }
+      var cls = "edge-path" + (e.type === "happy" ? " happy" : e.type === "err" ? " err" : "");
+      var mk = e.type === "happy" ? "url(#arr-happy)" : e.type === "err" ? "url(#arr-err)" : "url(#arr)";
+      html += '<path class="' + cls + '" d="' + pathD + '" marker-end="' + mk + '"/>';
+      if (e.type === "happy") {
+        html += '<path class="edge-trace" d="' + pathD + '"/>';
+      }
+      if (e.label) {
+        var lw = Math.max(46, e.label.length * 10.5 + 14);
+        html += '<rect class="edge-label-bg" x="' + (lx - lw / 2) + '" y="' + (ly - 10) + '" width="' + lw + '" height="20"/>';
+        html += '<text class="edge-label" x="' + lx + '" y="' + ly + '">' + esc(e.label) + '</text>';
+      }
+    });
+    html += '</g><g class="nodes">';
+
+    d.nodes.forEach(function (n) {
+      var selCls = selectedId === n.id ? " selected" : "";
+      html += '<g class="node ' + n.role + selCls + '" data-id="' + n.id + '" transform="translate(' + n.x + ',' + n.y + ')">';
+      html += shapePath(n);
+      html += '<text class="ntag" y="' + (-n.h / 2 + 14) + '">' + esc(n.tag) + '</text>';
+      html += '<text class="ntitle" y="3">' + esc(n.title) + '</text>';
+      html += '<text class="ncode" y="' + (n.h / 2 - 9) + '">' + esc(n.code) + '</text>';
+      html += '</g>';
+    });
+    html += '</g>';
+
+    vp.innerHTML = html;
+    fitView();
+  }
+
+  function renderTabs() {
+    var html = "";
+    DIAGRAMS.forEach(function (d, i) {
+      html += '<button class="tab' + (i === curIdx ? ' active' : '') + '" data-tab="' + i + '">' + esc(d.name) + '</button>';
+    });
+    document.getElementById("tabs").innerHTML = html;
+  }
+
+  function openDrawer(n) {
+    selectedId = n.id;
+    var pill = document.getElementById("dPill");
+    pill.className = "dpill " + n.role;
+    pill.textContent = roleNames[n.role];
+    document.getElementById("dTitle").textContent = n.title;
+    document.getElementById("dCode").textContent = "状态码：" + n.code;
+    document.getElementById("dActor").textContent = n.actor;
+    document.getElementById("dDesc").textContent = n.desc;
+    document.getElementById("dSchema").textContent = n.schema;
+    document.getElementById("drawer").classList.add("open");
+    document.querySelectorAll(".node").forEach(function (el) {
+      el.classList.toggle("selected", el.getAttribute("data-id") === n.id);
+    });
+  }
+
+  function closeDrawer() {
+    selectedId = null;
+    document.getElementById("drawer").classList.remove("open");
+    document.querySelectorAll(".node.selected").forEach(function (el) { el.classList.remove("selected"); });
+  }
+
+  document.getElementById("tabs").addEventListener("click", function (e) {
+    var b = e.target.closest("[data-tab]");
+    if (!b) return;
+    curIdx = parseInt(b.getAttribute("data-tab"), 10);
+    closeDrawer();
+    renderTabs();
+    renderDiagram();
+  });
+
+  vp.addEventListener("click", function (e) {
+    var g = e.target.closest(".node");
+    if (!g) return;
+    var id = g.getAttribute("data-id");
+    var n = DIAGRAMS[curIdx].nodes.find(function (x) { return x.id === id; });
+    if (n) openDrawer(n);
+  });
+
+  document.getElementById("dClose").addEventListener("click", closeDrawer);
+
+  document.getElementById("traceBtn").addEventListener("click", function () {
+    var on = document.body.classList.toggle("trace-on");
+    this.classList.toggle("on", on);
+    this.textContent = "流向动画：" + (on ? "开" : "关");
+  });
+
+  document.getElementById("themeBtn").addEventListener("click", function () {
+    var cur = document.documentElement.getAttribute("data-theme");
+    document.documentElement.setAttribute("data-theme", cur === "dark" ? "light" : "dark");
+  });
+
+  document.getElementById("zoomIn").addEventListener("click", function () { scale = Math.min(2.2, scale * 1.18); applyTransform(); });
+  document.getElementById("zoomOut").addEventListener("click", function () { scale = Math.max(0.35, scale / 1.18); applyTransform(); });
+  document.getElementById("zoomReset").addEventListener("click", fitView);
+
+  stageWrap.addEventListener("wheel", function (e) {
+    e.preventDefault();
+    var factor = e.deltaY < 0 ? 1.1 : 0.91;
+    var rect = stageWrap.getBoundingClientRect();
+    var mx = e.clientX - rect.left, my = e.clientY - rect.top;
+    var ns = Math.min(2.4, Math.max(0.35, scale * factor));
+    tx = mx - (mx - tx) * (ns / scale);
+    ty = my - (my - ty) * (ns / scale);
+    scale = ns;
+    applyTransform();
+  }, { passive: false });
+
+  stageWrap.addEventListener("mousedown", function (e) {
+    if (e.target.closest(".node") || e.target.closest(".drawer")) return;
+    dragging = true;
+    sx = e.clientX - tx;
+    sy = e.clientY - ty;
+    stageWrap.classList.add("dragging");
+  });
+  window.addEventListener("mousemove", function (e) {
+    if (!dragging) return;
+    tx = e.clientX - sx;
+    ty = e.clientY - sy;
+    applyTransform();
+  });
+  window.addEventListener("mouseup", function () {
+    dragging = false;
+    stageWrap.classList.remove("dragging");
+  });
+  window.addEventListener("resize", fitView);
+
+  if (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) {
+    document.documentElement.setAttribute("data-theme", "dark");
+  }
+  renderTabs();
+  renderDiagram();
+})();
+</script>
+</body>
+</html>

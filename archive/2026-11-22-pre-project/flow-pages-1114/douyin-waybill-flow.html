@@ -1,0 +1,185 @@
+<title>抖音面单流程</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: 一张流程图,上半是一次性登记,下半是每单取号打印,三条泳道 */
+:root {
+  --bg: #f6f7f5;
+  --fg: #1d2421;
+  --muted: #5d6963;
+  --surface: #ffffff;
+  --line: #8a948e;
+  --lane: #e6ebe8;
+  --warn: #b25b00;
+  --warn-bg: #fff3e2;
+  --ok: #1f6b4f;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #141a17; --fg: #e7ece9; --muted: #9aa6a0; --surface: #1d2622;
+    --line: #6f7b75; --lane: #25302b; --warn: #f0a24a; --warn-bg: #33281a; --ok: #6fcf9f;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #141a17; --fg: #e7ece9; --muted: #9aa6a0; --surface: #1d2622;
+  --line: #6f7b75; --lane: #25302b; --warn: #f0a24a; --warn-bg: #33281a; --ok: #6fcf9f;
+  color-scheme: dark;
+}
+body {
+  background: var(--bg); color: var(--fg);
+  font-family: -apple-system, "PingFang SC", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+  line-height: 1.6;
+  padding-block: 28px 40px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+main { max-width: 820px; margin: 0 auto; }
+h1 { font-size: 24px; margin: 0 0 6px; text-wrap: balance; }
+.lead { color: var(--muted); margin: 0 0 20px; font-size: 15px; }
+figure { margin: 0; }
+.scroll { overflow-x: auto; }
+svg { display: block; width: 100%; min-width: 560px; height: auto; color: var(--fg); }
+figcaption { color: var(--muted); font-size: 13px; margin-top: 10px; }
+.box { fill: var(--surface); stroke: var(--line); stroke-width: 1.2; }
+.boxdash { fill: var(--warn-bg); stroke: var(--warn); stroke-width: 1.2; stroke-dasharray: 5 4; }
+.lane { fill: var(--lane); }
+.t { font-size: 13px; font-weight: 600; fill: var(--fg); }
+.s { font-size: 11px; fill: var(--muted); }
+.h { font-size: 13px; font-weight: 700; fill: var(--fg); }
+.lb { font-size: 11px; fill: var(--muted); }
+.lbw { font-size: 11px; fill: var(--warn); }
+.ln { stroke: var(--fg); stroke-width: 1.3; fill: none; }
+.lnd { stroke: var(--warn); stroke-width: 1.3; fill: none; stroke-dasharray: 5 4; }
+.arw { fill: var(--fg); }
+.arwd { fill: var(--warn); }
+h2 { font-size: 16px; margin: 28px 0 8px; }
+ul { margin: 0; padding-left: 20px; }
+li { margin-bottom: 6px; }
+.src { color: var(--muted); font-size: 13px; margin-top: 20px; }
+</style>
+
+<main>
+  <h1>抖音面单流程</h1>
+  <p class="lead">一张面单从登记地址到贴上包裹,经过哪些系统、哪几步。橙色虚线是文档里没写清楚的环节。</p>
+
+  <figure>
+    <div class="scroll">
+    <svg viewBox="0 0 780 770" role="img" aria-label="抖音电子面单分两段:先一次性登记发货地址并通过快递审核,再每单由小程序云函数调用抖店取号,抖店向快递公司要运单号,再取蓝牙打印指令发给打印机,最后快递揽收后抖店自动发货;取件预约方式未确定。">
+      <defs>
+        <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="arw"/></marker>
+        <marker id="ad" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="arwd"/></marker>
+      </defs>
+
+      <!-- Part 1 -->
+      <text x="20" y="32" class="h">① 一次性:登记发货地址(每位织女、每家快递各一次)</text>
+      <rect x="20" y="48" width="155" height="52" rx="6" class="box"/>
+      <text x="97" y="70" text-anchor="middle" class="t">抖店后台新增地址</text>
+      <text x="97" y="87" text-anchor="middle" class="s">织女的取件地址</text>
+      <rect x="205" y="48" width="155" height="52" rx="6" class="box"/>
+      <text x="282" y="70" text-anchor="middle" class="t">提交合作申请</text>
+      <text x="282" y="87" text-anchor="middle" class="s">选择快递公司</text>
+      <rect x="390" y="48" width="155" height="52" rx="6" class="box"/>
+      <text x="467" y="70" text-anchor="middle" class="t">快递审核</text>
+      <text x="467" y="87" text-anchor="middle" class="s">网点审核 / 月结验证</text>
+      <rect x="575" y="48" width="155" height="52" rx="6" class="box"/>
+      <text x="652" y="70" text-anchor="middle" class="t">充值并开通</text>
+      <text x="652" y="87" text-anchor="middle" class="s">加盟型线下充值</text>
+      <line x1="175" y1="74" x2="203" y2="74" class="ln" marker-end="url(#a)"/>
+      <line x1="360" y1="74" x2="388" y2="74" class="ln" marker-end="url(#a)"/>
+      <line x1="545" y1="74" x2="573" y2="74" class="ln" marker-end="url(#a)"/>
+      <text x="20" y="122" class="lb">完成后,这个地址才能用于下面的取号</text>
+
+      <!-- Part 2 -->
+      <text x="20" y="150" class="h">② 每单:取号、打印、揽收</text>
+      <rect x="30" y="160" width="200" height="24" rx="4" class="lane"/>
+      <text x="130" y="177" text-anchor="middle" class="t">小程序 + 云函数</text>
+      <rect x="290" y="160" width="200" height="24" rx="4" class="lane"/>
+      <text x="390" y="177" text-anchor="middle" class="t">抖店</text>
+      <rect x="550" y="160" width="200" height="24" rx="4" class="lane"/>
+      <text x="650" y="177" text-anchor="middle" class="t">快递公司 / 网点</text>
+
+      <rect x="30" y="205" width="200" height="46" rx="6" class="box"/>
+      <text x="130" y="225" text-anchor="middle" class="t">织女点「一键寄件」</text>
+      <text x="130" y="241" text-anchor="middle" class="s">订单已绑定该织女</text>
+
+      <rect x="30" y="275" width="200" height="46" rx="6" class="box"/>
+      <text x="130" y="295" text-anchor="middle" class="t">云函数调用取号</text>
+      <text x="130" y="311" text-anchor="middle" class="s">newCreateOrder</text>
+
+      <rect x="290" y="275" width="200" height="46" rx="6" class="box"/>
+      <text x="390" y="295" text-anchor="middle" class="t">校验</text>
+      <text x="390" y="311" text-anchor="middle" class="s">地址已登记·有余额·订单可发货</text>
+
+      <rect x="290" y="345" width="200" height="46" rx="6" class="box"/>
+      <text x="390" y="365" text-anchor="middle" class="t">向快递公司取号</text>
+      <text x="390" y="381" text-anchor="middle" class="s">按织女地址 + 快递编码</text>
+
+      <rect x="550" y="345" width="200" height="46" rx="6" class="box"/>
+      <text x="650" y="365" text-anchor="middle" class="t">分配运单号</text>
+      <text x="650" y="381" text-anchor="middle" class="s">网点面单余额 / 月结账号</text>
+
+      <rect x="290" y="415" width="200" height="46" rx="6" class="box"/>
+      <text x="390" y="435" text-anchor="middle" class="t">返回面单信息</text>
+      <text x="390" y="451" text-anchor="middle" class="s">ebill_infos(含运单号)</text>
+
+      <rect x="30" y="415" width="200" height="46" rx="6" class="box"/>
+      <text x="130" y="435" text-anchor="middle" class="t">拿到运单号</text>
+      <text x="130" y="451" text-anchor="middle" class="s">写入订单记录</text>
+
+      <rect x="30" y="485" width="200" height="46" rx="6" class="box"/>
+      <text x="130" y="505" text-anchor="middle" class="t">请求打印指令</text>
+      <text x="130" y="521" text-anchor="middle" class="s">fetchBluetoothCmd</text>
+
+      <rect x="290" y="485" width="200" height="46" rx="6" class="box"/>
+      <text x="390" y="505" text-anchor="middle" class="t">生成打印指令</text>
+      <text x="390" y="521" text-anchor="middle" class="s">CPCL / TSPL</text>
+
+      <rect x="30" y="555" width="200" height="46" rx="6" class="box"/>
+      <text x="130" y="575" text-anchor="middle" class="t">蓝牙发给打印机</text>
+      <text x="130" y="591" text-anchor="middle" class="s">BLE 分包发送,打出面单</text>
+
+      <rect x="30" y="625" width="200" height="46" rx="6" class="box"/>
+      <text x="130" y="645" text-anchor="middle" class="t">织女贴单、装袋</text>
+      <text x="130" y="661" text-anchor="middle" class="s">等待快递员</text>
+
+      <rect x="550" y="625" width="200" height="46" rx="6" class="boxdash"/>
+      <text x="650" y="645" text-anchor="middle" class="t">快递员上门揽收</text>
+      <text x="650" y="661" text-anchor="middle" class="s">谁来预约:未确定</text>
+
+      <rect x="290" y="695" width="200" height="46" rx="6" class="box"/>
+      <text x="390" y="715" text-anchor="middle" class="t">查到揽收轨迹</text>
+      <text x="390" y="731" text-anchor="middle" class="s">自动发货</text>
+
+      <!-- arrows -->
+      <line x1="130" y1="251" x2="130" y2="273" class="ln" marker-end="url(#a)"/>
+      <line x1="230" y1="298" x2="288" y2="298" class="ln" marker-end="url(#a)"/>
+      <text x="259" y="291" text-anchor="middle" class="lb">取号请求</text>
+      <line x1="390" y1="321" x2="390" y2="343" class="ln" marker-end="url(#a)"/>
+      <line x1="490" y1="358" x2="548" y2="358" class="ln" marker-end="url(#a)"/>
+      <line x1="548" y1="378" x2="490" y2="378" class="ln" marker-end="url(#a)"/>
+      <line x1="390" y1="391" x2="390" y2="413" class="ln" marker-end="url(#a)"/>
+      <line x1="288" y1="438" x2="230" y2="438" class="ln" marker-end="url(#a)"/>
+      <line x1="130" y1="461" x2="130" y2="483" class="ln" marker-end="url(#a)"/>
+      <line x1="230" y1="508" x2="288" y2="508" class="ln" marker-end="url(#a)"/>
+      <line x1="288" y1="528" x2="230" y2="528" class="ln" marker-end="url(#a)"/>
+      <line x1="130" y1="531" x2="130" y2="553" class="ln" marker-end="url(#a)"/>
+      <line x1="130" y1="601" x2="130" y2="623" class="ln" marker-end="url(#a)"/>
+      <line x1="230" y1="648" x2="548" y2="648" class="lnd" marker-end="url(#ad)"/>
+      <text x="390" y="641" text-anchor="middle" class="lbw">预约上门?</text>
+      <polyline points="650,671 650,718 492,718" class="ln" marker-end="url(#a)"/>
+      <text x="571" y="711" text-anchor="middle" class="lb">揽收轨迹</text>
+    </svg>
+    </div>
+    <figcaption>地址登记是前提;之后每单的取号、取打印指令、蓝牙打印都由云函数和小程序串起来,取号本身不会通知快递员上门。</figcaption>
+  </figure>
+
+  <h2>图里没有确定的</h2>
+  <ul>
+    <li><strong>预约上门</strong>:官方文档里取号之后没有预约快递员的步骤,要靠固定上门约定,或京东下单接口。</li>
+    <li><strong>校验的三个条件</strong>里,「有余额」只适用加盟型;京东、顺丰的余额无法在抖店界面查询。</li>
+    <li><strong>打印机型号</strong>:抖店只支持部分品牌,支持清单没有找到。</li>
+    <li><strong>自动发货</strong>:来自抖店学习中心的功能说明,对 API 取号是否同样生效,没有实测。</li>
+  </ul>
+
+  <p class="src">来源:抖店开放平台 <code>/logistics/newCreateOrder</code>、<code>/logistics/fetchBluetoothCmd</code>,抖店学习中心《电子面单 PC 端商家使用说明(25 年版)》。查阅日期 2026-11-14。</p>
+</main>
