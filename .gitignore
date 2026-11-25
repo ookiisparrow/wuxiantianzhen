@@ -47,8 +47,9 @@ next-env.d.ts
 /uploads
 /agent-tools
 
-# local UI review captures
+# local UI review & verification captures
 /docs/ui-review/
+/.verify-artifacts/
 
 # design workbench runtime artifacts
 /design/handoff.json

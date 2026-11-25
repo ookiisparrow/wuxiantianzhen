@@ -11,6 +11,7 @@ function updateModeBadge() {
   }
 }
 endpointInput.addEventListener("input", updateModeBadge);
+jwtInput.addEventListener("input", updateModeBadge);
 jwtInput.addEventListener("change", updateModeBadge);
 
 // Tab navigation across all 6 operational workspaces
@@ -21,6 +22,13 @@ document.getElementById("workspaceNav").addEventListener("click", (e) => {
   document.querySelectorAll(".panel").forEach((p) => p.classList.remove("active"));
   btn.classList.add("active");
   document.getElementById(btn.dataset.panel)?.classList.add("active");
+  if (
+    (btn.dataset.panel === "ws-ship" || btn.dataset.panel === "ws-funnel") &&
+    endpointInput.value.trim() &&
+    jwtInput.value.trim()
+  ) {
+    refreshOverview().catch(() => {});
+  }
 });
 
 /**
@@ -209,8 +217,18 @@ document.getElementById("arbitrateList").addEventListener("click", async (e) => 
   const btn = e.target.closest("button[data-approve]");
   if (!btn) return;
   const approve = btn.dataset.approve === "true";
-  await callAdmin("admin.arbitratePhotoReview", { reviewId: "rev_pkg_092_1", approve });
-  document.getElementById("arbRow1").innerHTML = `<span>✅ 已完成 10 秒仲裁：${approve ? "通过并解锁扫码装袋" : "已退回返修"}</span>`;
+  const reviewId = btn.dataset.rev || "rev_pkg_092_1";
+  const row = btn.closest(".list-item") || document.getElementById("arbRow1");
+  try {
+    await callAdmin("admin.arbitratePhotoReview", { reviewId, approve });
+    if (row) {
+      row.innerHTML = `<span>✅ 已完成 10 秒仲裁 (${reviewId})：${approve ? "通过并解锁扫码装袋" : "已退回返修"}</span>`;
+    }
+  } catch (err) {
+    if (row) {
+      row.innerHTML = `<span>⛔ 仲裁失败：${err.message}</span>`;
+    }
+  }
 });
 
 // ④ Funnel Deposit Approval
@@ -232,23 +250,38 @@ document.getElementById("btnApproveWeaver").addEventListener("click", async () =
 
 // ⑤ Weekly Supplier Yarn CSV Export
 document.getElementById("btnExportYarnCsv").addEventListener("click", async () => {
-  const weekKey = document.getElementById("yarnWeekKey").value.trim();
-  const res = await callAdmin("admin.exportSupplierYarnCsv", { weekKey });
-  document.getElementById("yarnCsvPreview").textContent = res.csvContent;
-  downloadTextFile(`jzh-supplier-yarn-${weekKey}.csv`, res.csvContent);
+  const preview = document.getElementById("yarnCsvPreview");
+  try {
+    const weekKey = document.getElementById("yarnWeekKey").value.trim();
+    const res = await callAdmin("admin.exportSupplierYarnCsv", { weekKey });
+    preview.textContent = res.csvContent;
+    downloadTextFile(`jzh-supplier-yarn-${weekKey}.csv`, res.csvContent);
+  } catch (err) {
+    preview.textContent = `⛔ 导出失败：${err.message}`;
+  }
 });
 
 // ⑥ 14-Day Corporate Bank Batch Payout CSV
 let latestBatchId = "settle_20261124";
 document.getElementById("btnExportBankCsv").addEventListener("click", async () => {
-  const res = await callAdmin("admin.exportBankPayoutCsv");
-  latestBatchId = res.batchId;
-  document.getElementById("bankCsvPreview").textContent = res.csvContent;
-  downloadTextFile(`bank-payout-${res.batchId}.csv`, res.csvContent);
+  const preview = document.getElementById("bankCsvPreview");
+  try {
+    const res = await callAdmin("admin.exportBankPayoutCsv");
+    latestBatchId = res.batchId;
+    preview.textContent = res.csvContent;
+    downloadTextFile(`bank-payout-${res.batchId}.csv`, res.csvContent);
+  } catch (err) {
+    preview.textContent = `⛔ 导出失败：${err.message}`;
+  }
 });
 
 document.getElementById("btnConfirmBankPaid").addEventListener("click", async () => {
-  const res = await callAdmin("admin.confirmBankPayoutPaid", { batchId: latestBatchId });
-  document.getElementById("bankCsvPreview").textContent =
-    `✅ 批次 ${latestBatchId} 已核销：共完成 ${res.paidPayees} 位织女汇款（结清 ${res.settledPackages} 个订单包）。`;
+  const preview = document.getElementById("bankCsvPreview");
+  try {
+    const res = await callAdmin("admin.confirmBankPayoutPaid", { batchId: latestBatchId });
+    preview.textContent =
+      `✅ 批次 ${latestBatchId} 已核销：共完成 ${res.paidPayees} 位织女汇款（结清 ${res.settledPackages} 个订单包）。`;
+  } catch (err) {
+    preview.textContent = `⛔ 核销失败：${err.message}`;
+  }
 });
