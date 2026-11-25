@@ -6,8 +6,12 @@ function updateModeBadge() {
   const live = Boolean(endpointInput.value.trim());
   modeBadge.textContent = live ? "已连 CloudBase 生产接口" : "本地交互沙盒模式";
   modeBadge.className = `badge ${live ? "badge-live" : "badge-demo"}`;
+  if (live && jwtInput.value.trim()) {
+    refreshOverview().catch(() => {});
+  }
 }
 endpointInput.addEventListener("input", updateModeBadge);
+jwtInput.addEventListener("change", updateModeBadge);
 
 // Tab navigation across all 6 operational workspaces
 document.getElementById("workspaceNav").addEventListener("click", (e) => {
@@ -158,7 +162,35 @@ async function runCsvFlow(action) {
 document.getElementById("btnPreviewCsv").addEventListener("click", () => runCsvFlow("admin.previewDouyinCsv"));
 document.getElementById("btnCommitCsv").addEventListener("click", () => runCsvFlow("admin.commitDouyinCsv"));
 
-// ③ Seed Grouped Ready-to-Ship & Arbitrate Demos
+// ③ Seed Grouped Ready-to-Ship & Arbitrate Demos (and live refresh when connected)
+async function refreshOverview() {
+  const data = await callAdmin("admin.overview");
+  if (!data || !Array.isArray(data.readyPackages)) return;
+  document.getElementById("readyShipGroups").innerHTML =
+    data.readyPackages.length === 0
+      ? `<div class="list-item"><span class="muted">当前暂无待打单包裹</span></div>`
+      : data.readyPackages
+          .map(
+            (p) =>
+              `<div class="list-item"><div><strong>包裹 ${p._id}</strong><div class="muted" style="margin:2px 0 0">织女 ${p.assignedWeaverId || "-"}</div></div><span class="badge badge-live">待打单</span></div>`,
+          )
+          .join("");
+  document.getElementById("manualHoldList").innerHTML =
+    (data.manualHoldPackages || [])
+      .map(
+        (p) =>
+          `<div class="list-item"><div><strong>包裹 ${p._id}</strong> · 人工挂起</div><span class="badge badge-demo">待人工指派</span></div>`,
+      )
+      .join("") || `<div class="list-item"><span class="muted">当前暂无人工挂起包裹</span></div>`;
+  document.getElementById("arbitrateList").innerHTML =
+    (data.escalatedReviews || [])
+      .map(
+        (r) =>
+          `<div class="list-item" data-review-id="${r._id}"><div><strong>${r._id}</strong> · 超时升级待仲裁</div><div class="btn-group"><button class="btn-primary" data-approve="true" data-rev="${r._id}">10秒通过</button><button class="btn-ghost" data-approve="false" data-rev="${r._id}">打回返修</button></div></div>`,
+      )
+      .join("") || `<div class="list-item"><span class="muted">当前暂无超时待仲裁审照单</span></div>`;
+}
+
 document.getElementById("readyShipGroups").innerHTML = [
   { alias: "织女001-嘉兴南湖", count: 5, bagCodes: "BAG-8801..8805" },
   { alias: "织女006-苏州吴中", count: 3, bagCodes: "BAG-9102..9104" },

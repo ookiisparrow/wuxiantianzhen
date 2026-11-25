@@ -237,6 +237,11 @@ test("Unified router dispatchCloudAction: auth, weaver UGC check, deposit cashie
     { province: "浙江省", city: "嘉兴市", quizCorrectCount: 8, portfolioPhotoFileIds: ["f1", "f2", "f3"] },
   );
   await dispatchCloudAction(
+    { db, ports, adminJwtSecret: TEST_SECRET, adminToken, nowUtcMs: t0 + 500 },
+    "admin.funnelPassPortfolio",
+    { userId: weaverId },
+  );
+  await dispatchCloudAction(
     { db, ports, app: "mp-weaver", openid: "oid_w_01", adminJwtSecret: TEST_SECRET, nowUtcMs: t0 + 1000 },
     "weaver.funnelAckDeposit",
     { ackDepositNotice: true },
@@ -249,7 +254,7 @@ test("Unified router dispatchCloudAction: auth, weaver UGC check, deposit cashie
   await dispatchCloudAction(
     { db, ports, adminJwtSecret: TEST_SECRET, adminToken, nowUtcMs: t0 + 3000 },
     "admin.funnelSampleInspect",
-    { userId: weaverId, trackingNo: "SF1001", passed: true, shippingModeConfirmed: "pickup" },
+    { userId: weaverId, trackingNo: "SF1001", passed: true, shippingModeConfirmed: "auto_pickup" },
   );
   const approveRes = await dispatchCloudAction(
     { db, ports, adminJwtSecret: TEST_SECRET, adminToken, nowUtcMs: t0 + 4000 },
@@ -337,7 +342,7 @@ test("Unified router dispatchCloudAction: auth, weaver UGC check, deposit cashie
     },
   );
   assert.equal(subRes.ok, true);
-  assert.equal(ports.logs.imageChecks.length, 3); // All 3 UGC photos checked automatically!
+  assert.equal(ports.logs.imageChecks.length, 6); // 3 funnel portfolio photos + 3 finished-work QC photos checked!
   const reviewId = (subRes as any).data.reviewId as string;
 
   // 7. 5-minute watchdog after 2h SLA with 0 votes escalates to needs_admin -> admin arbitrates in 10s

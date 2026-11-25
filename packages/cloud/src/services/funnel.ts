@@ -1,6 +1,7 @@
 import {
   COLLECTIONS,
   DAY_MS,
+  HOUR_MS,
   AppError,
   ERROR_CODES,
   WEAVER_DEPOSIT_FEN,
@@ -8,6 +9,7 @@ import {
   canTransition,
   inferRegionFromProvince,
   type DepositChannel,
+  type PhotoReviewDoc,
   type RecruitFunnelDoc,
   type RegionCode,
   type ShippingMode,
@@ -114,13 +116,14 @@ export async function submitFunnelEntryStep1(
     }),
   );
 
+  const portfolioAttemptNo = (existing?.portfolioAttempts ?? 0) + 1;
   const doc: RecruitFunnelDoc = {
     _id: fId,
     userId: params.userId,
     stage: "apply_entry",
     regionCheckPassed: true,
     quizAttempts: nextAttempts,
-    portfolioAttempts: (existing?.portfolioAttempts ?? 0) + 1,
+    portfolioAttempts: portfolioAttemptNo,
     trialAttempts: 0,
     sampleAttempts: 0,
     depositStatus: "unpaid",
@@ -129,6 +132,26 @@ export async function submitFunnelEntryStep1(
     updatedAt: now,
   };
   await db.put(COLLECTIONS.RECRUIT_FUNNEL, doc);
+
+  const reviewId = `rev_portfolio_${params.userId}_${portfolioAttemptNo}`;
+  const reviewDoc: PhotoReviewDoc = {
+    _id: reviewId,
+    scene: "funnel_portfolio",
+    targetId: fId,
+    weaverId: params.userId,
+    photoFileIds: [...params.portfolioPhotoFileIds],
+    imageHashes: [],
+    duplicateFlag: false,
+    isCalibrationSample: false,
+    requiredVotes: 3,
+    slaDeadlineAt: now + 2 * HOUR_MS,
+    voteCount: 0,
+    status: "pending",
+    version: 1,
+    createdAt: now,
+  };
+  await db.put(COLLECTIONS.PHOTO_REVIEWS, reviewDoc);
+
   return { passedQuizAndRegion: true, stage: "apply_entry" };
 }
 
@@ -141,6 +164,7 @@ export async function passPortfolioAndUnlockExamSample(
     userId: string;
     ackDepositNotice: boolean;
     examSampleCode?: string; // e.g. "EXAM-MINI-MUSHROOM-01" (non-commercial!)
+    requireApprovedPortfolio?: boolean;
     nowUtcMs?: number;
   },
 ): Promise<RecruitFunnelDoc> {
@@ -155,6 +179,16 @@ export async function passPortfolioAndUnlockExamSample(
   const cur = await db.get<RecruitFunnelDoc>(COLLECTIONS.RECRUIT_FUNNEL, fId);
   if (!cur || !canTransition(RECRUIT_FUNNEL_SPEC, cur.stage, "trial_make")) {
     throw new AppError(ERROR_CODES.INVALID_STATE_TRANSITION, "当前漏斗阶段不可解锁考级小样");
+  }
+
+  if (params.requireApprovedPortfolio) {
+    const approvedPortfolio = await db.find<PhotoReviewDoc>(
+      COLLECTIONS.PHOTO_REVIEWS,
+      (r) => r.scene === "funnel_portfolio" && r.targetId === fId && r.status === "approved",
+    );
+    if (approvedPortfolio.length === 0) {
+      throw new AppError(ERROR_CODES.FORBIDDEN, "历史作品集盲审通过后方可解锁考级小样");
+    }
   }
 
   const next: RecruitFunnelDoc = {
@@ -247,6 +281,16 @@ export async function recordPhysicalSampleInspection(
   };
   await db.put(COLLECTIONS.RECRUIT_FUNNEL, next);
 
+  let confirmedMode: ShippingMode | undefined;
+  if (params.shippingModeConfirmed !== undefined) {
+    const rawMode = String(params.shippingModeConfirmed);
+    if (rawMode === "pickup" || rawMode === "auto_pickup") confirmedMode = "auto_pickup";
+    else if (rawMode === "self_dropoff") confirmedMode = "self_dropoff";
+    else {
+      throw new AppError(ERROR_CODES.VALIDATION_ERROR, `非法发货模式：${rawMode}`);
+    }
+  }
+
   await db.atomicUpdate<UserDoc>(
     COLLECTIONS.USERS,
     params.userId,
@@ -254,7 +298,7 @@ export async function recordPhysicalSampleInspection(
     (u) => ({
       ...u,
       funnelStage: nextStage,
-      shippingMode: params.shippingModeConfirmed ?? u.shippingMode ?? "auto_pickup",
+      shippingMode: confirmedMode ?? u.shippingMode ?? "auto_pickup",
       updatedAt: now,
     }),
   );

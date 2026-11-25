@@ -52,6 +52,13 @@ export function accumulateWeaverSubscribeQuota(): Promise<void> {
   });
 }
 
+export async function ensureWeaverLoggedIn(phone?: string, nickname?: string): Promise<any> {
+  return callWeaverCloud("auth.login", {
+    ...(phone ? { phone } : {}),
+    ...(nickname ? { nickname } : {}),
+  });
+}
+
 export function fenToYuanText(fen: number | undefined | null): string {
   const n = typeof fen === "number" && Number.isFinite(fen) ? fen : 0;
   return (n / 100).toFixed(2);

@@ -7,7 +7,8 @@ import {
   ERROR_CODES,
   DISPATCH_OFFER_STATUS_SPEC,
   ORDER_PACKAGE_STATUS_SPEC,
-  computeWeaverStyleUnits,
+  computeWeaverFreeMin,
+  estimateAvailableGrams,
   inferRegionFromProvince,
   type DispatchOfferDoc,
   type OrderPackageDoc,
@@ -22,8 +23,20 @@ import { assertNotSelfOrder } from "../kit/auth.ts";
 import type { DbAdapter } from "../kit/db.ts";
 import { dispatchOfferId, weaverStockId } from "../kit/ids.ts";
 import { compactWeaverQueue } from "../kit/queue.ts";
+import { consumeReadyStockForAcceptedOffer } from "../kit/stockLock.ts";
 import { transitionStatus } from "../kit/transition.ts";
-import { consumeYarnForPackage } from "../kit/yarnInventory.ts";
+import { consumeYarnForPackage, restoreYarnForPackage } from "../kit/yarnInventory.ts";
+
+function normProvince(p: string): string {
+  return p.trim().replace(/(壮族自治区|回族自治区|维吾尔自治区|自治区|省|市)$/, "");
+}
+
+async function loadUnitWeightMap(db: DbAdapter): Promise<Record<string, number>> {
+  const yarns = await db.find<YarnCatalogDoc>(COLLECTIONS.YARN_CATALOG, () => true);
+  const out: Record<string, number> = {};
+  for (const y of yarns) out[y._id] = y.unitWeightG || 50;
+  return out;
+}
 
 /**
  * Promotes `confirming` Douyin packages whose merge window has elapsed into `waiting_dispatch`,
@@ -98,19 +111,59 @@ export async function dispatchPoolTick(
   const backlogByWeaver = new Map<string, number>();
   const pendingOfferCountByWeaver = new Map<string, number>();
   const stalledWeavers = new Set<string>();
+  const pendingOfferGramsByWeaver = new Map<string, Map<string, number>>();
 
   for (const ap of activePkgs) {
     if (!ap.assignedWeaverId) continue;
     if (ap.status === "offered") {
       pendingOfferCountByWeaver.set(ap.assignedWeaverId, (pendingOfferCountByWeaver.get(ap.assignedWeaverId) ?? 0) + 1);
+      if (!ap.isReadyStockReuse) {
+        let gMap = pendingOfferGramsByWeaver.get(ap.assignedWeaverId);
+        if (!gMap) {
+          gMap = new Map();
+          pendingOfferGramsByWeaver.set(ap.assignedWeaverId, gMap);
+        }
+        for (const it of ap.itemsSnapshot) {
+          for (const b of it.yarnBomSnapshot) {
+            gMap.set(b.yarnCode, (gMap.get(b.yarnCode) ?? 0) + b.consumedG * it.qty);
+          }
+        }
+      }
     }
-    if (["offered", "making", "photo_review"].includes(ap.status)) {
+    if (["offered", "making", "photo_review"].includes(ap.status) && !ap.isReadyStockReuse) {
       backlogByWeaver.set(ap.assignedWeaverId, (backlogByWeaver.get(ap.assignedWeaverId) ?? 0) + ap.totalMin);
     }
     if (ap.status === "making" && ap.queueSeq === 1 && ap.stallPromptedAt) {
       stalledWeavers.add(ap.assignedWeaverId);
     }
   }
+
+  // Preload prior offers: never re-offer to a weaver who rejected/timed-out, and deprioritize prior releasers
+  const allOffers = await db.find<DispatchOfferDoc>(COLLECTIONS.DISPATCH_OFFERS, () => true);
+  const rejectedOrExpiredByPkg = new Map<string, Set<string>>();
+  const priorAcceptedByPkg = new Map<string, Set<string>>();
+  for (const off of allOffers) {
+    if (off.status === "rejected" || off.status === "timeout") {
+      let s = rejectedOrExpiredByPkg.get(off.packageId);
+      if (!s) {
+        s = new Set();
+        rejectedOrExpiredByPkg.set(off.packageId, s);
+      }
+      s.add(off.weaverId);
+    } else if (off.status === "accepted") {
+      let s = priorAcceptedByPkg.get(off.packageId);
+      if (!s) {
+        s = new Set();
+        priorAcceptedByPkg.set(off.packageId, s);
+      }
+      s.add(off.weaverId);
+    }
+  }
+
+  // Preload ready stock docs & track unreserved free stock across this tick
+  const allStocks = await db.find<WeaverStockDoc>(COLLECTIONS.WEAVER_STOCK, () => true);
+  const stockDocById = new Map(allStocks.map((s) => [s._id, s]));
+  const freeStockByDocId = new Map(allStocks.map((s) => [s._id, s.availableQty]));
 
   const waiting = await db.find<OrderPackageDoc>(
     COLLECTIONS.ORDER_PACKAGES,
@@ -137,11 +190,24 @@ export async function dispatchPoolTick(
 
     const horizonDays = pkg.channel === "mp_wechat" ? mpHorizon : liveHorizon;
     const buyerRegion = inferRegionFromProvince(pkg.buyerProvince);
+    const buyerProvNorm = normProvince(pkg.buyerProvince);
+    const rejectedOrExpired = rejectedOrExpiredByPkg.get(pkg._id);
+    const priorAccepted = priorAcceptedByPkg.get(pkg._id);
+    const pkgOrderSet = new Set(pkg.orderIds);
+
+    // Aggregate total BOM grams required across ALL items in this package
+    const pkgNeedGrams = new Map<string, number>();
+    for (const it of pkg.itemsSnapshot) {
+      for (const b of it.yarnBomSnapshot) {
+        pkgNeedGrams.set(b.yarnCode, (pkgNeedGrams.get(b.yarnCode) ?? 0) + b.consumedG * it.qty);
+      }
+    }
 
     // Candidate pool rule (docs/07 §16): douyin_online ONLY live pool; mp_wechat allows mp (priority) + live (overflow)
     const eligibleWeavers = weavers.filter((w) => {
       if (pkg.channel === "douyin_online" && w.pool !== "live") return false;
       if (pkg.buyerUserId && pkg.buyerUserId === w._id) return false; // Hard anti-self-order
+      if (rejectedOrExpired?.has(w._id)) return false; // Never re-offer to weaver who rejected or timed out
       if (w.pauseUntil && w.pauseUntil > now) return false;
       if (stalledWeavers.has(w._id)) return false;
       if ((pendingOfferCountByWeaver.get(w._id) ?? 0) >= maxOffersPerWeaver) return false;
@@ -153,78 +219,107 @@ export async function dispatchPoolTick(
       tier: DispatchOfferDoc["matchTier"];
       tierRank: number;
       isStockReuse: boolean;
+      usesPaidReservation: boolean;
+      stockDocId?: string;
     };
     const scored: ScoredCandidate[] = [];
 
     for (const w of eligibleWeavers) {
-      // Check if weaver holds full ready stock for single-item package
       let holdsReadyStock = false;
+      let usesPaidReservation = false;
+      let stockDocId: string | undefined;
+
       if (pkg.itemsSnapshot.length === 1) {
         const only = pkg.itemsSnapshot[0]!;
-        const st = await db.get<WeaverStockDoc>(COLLECTIONS.WEAVER_STOCK, weaverStockId(w._id, only.skuCode));
-        if (st && st.availableQty >= only.qty) {
-          holdsReadyStock = true;
+        const sId = weaverStockId(w._id, only.skuCode);
+        const st = stockDocById.get(sId);
+        if (st) {
+          const reservedForPkg = st.reservations
+            .filter((r) => pkgOrderSet.has(r.orderId) || r.packageId === pkg._id)
+            .reduce((sum, r) => sum + r.qty, 0);
+          if (reservedForPkg >= only.qty) {
+            holdsReadyStock = true;
+            usesPaidReservation = true;
+            stockDocId = sId;
+          } else if ((freeStockByDocId.get(sId) ?? 0) >= only.qty) {
+            holdsReadyStock = true;
+            stockDocId = sId;
+          }
         }
       }
 
       if (!holdsReadyStock) {
-        // Check dual-bucket capacity (time + yarn + Craft-KOL enrollment) for all items in package
-        const backlog = backlogByWeaver.get(w._id) ?? 0;
-        let canMakeAll = true;
+        // If package came from an explicit ready_stock SKU and this weaver has no ready stock, cannot make to order unless weaver has MTO capacity; check aggregate time + enrollment + yarn
+        const certified = certifiedByWeaver.get(w._id) ?? [];
+        let enrolledAll = true;
         for (const item of pkg.itemsSnapshot) {
           const styleDoc = styleMap.get(item.skuCode);
-          const cap = computeWeaverStyleUnits(
-            {
-              userId: w._id,
-              acceptingOrders: w.acceptingOrders,
-              pauseUntil: w.pauseUntil,
-              restDays: w.restDays,
-              dailyCapacityMin: w.dailyCapacityMin,
-              speedFactor: w.speedFactor,
-              backlogMin: backlog,
-              yarnInventory: w.yarnInventory,
-              certifiedStyleCodes: certifiedByWeaver.get(w._id) ?? [],
-            },
-            {
-              skuCode: item.skuCode,
-              standardMin: item.standardMin,
-              requiresEnrollment: styleDoc?.requiresEnrollment,
-              yarnBomConsumed: item.yarnBomSnapshot.map((b) => ({
-                yarnCode: b.yarnCode,
-                consumedG: b.consumedG,
-                unitWeightG: yarnWeightMap.get(b.yarnCode) ?? 50,
-              })),
-            },
-            undefined,
-            { nowUtcMs: now, horizonDays },
-          );
-          if (cap.units < item.qty) {
-            canMakeAll = false;
+          if (styleDoc?.requiresEnrollment && !certified.includes(item.skuCode)) {
+            enrolledAll = false;
             break;
           }
         }
-        if (!canMakeAll) continue;
+        if (!enrolledAll) continue;
+
+        const backlog = backlogByWeaver.get(w._id) ?? 0;
+        const freeMin = computeWeaverFreeMin(
+          {
+            userId: w._id,
+            acceptingOrders: w.acceptingOrders,
+            pauseUntil: w.pauseUntil,
+            restDays: w.restDays,
+            dailyCapacityMin: w.dailyCapacityMin,
+            speedFactor: w.speedFactor,
+            backlogMin: backlog,
+            yarnInventory: w.yarnInventory,
+            certifiedStyleCodes: certified,
+          },
+          { nowUtcMs: now, horizonDays },
+        );
+        if (pkg.totalMin <= 0 || freeMin < pkg.totalMin) continue;
+
+        const pendingG = pendingOfferGramsByWeaver.get(w._id);
+        let enoughYarn = true;
+        for (const [yarnCode, needG] of pkgNeedGrams.entries()) {
+          if (needG <= 0) continue;
+          const unitG = yarnWeightMap.get(yarnCode) ?? 50;
+          const availG = estimateAvailableGrams(w.yarnInventory[yarnCode], unitG) - (pendingG?.get(yarnCode) ?? 0);
+          if (availG < needG) {
+            enoughYarn = false;
+            break;
+          }
+        }
+        if (!enoughYarn) continue;
       }
 
-      const wProvince = w.cityQuotaKey?.split("-")[0] ?? "";
+      const wProvince = normProvince(w.cityQuotaKey?.split("-")[0] ?? "");
       let tier: DispatchOfferDoc["matchTier"] = "national";
       let tierRank = 4;
       if (holdsReadyStock) {
         tier = "stock";
         tierRank = 0;
-      } else if (wProvince && pkg.buyerProvince.startsWith(wProvince)) {
+      } else if (wProvince && buyerProvNorm && buyerProvNorm === wProvince) {
         tier = "same_province";
         tierRank = 1;
       } else if (w.regionCode === buyerRegion) {
         tier = "same_region";
         tierRank = 2;
       }
-      // Prefer mp pool weavers before overflowing to live pool weavers for mp_wechat orders
       if (pkg.channel === "mp_wechat" && w.pool === "live" && !holdsReadyStock) {
         tierRank += 0.5;
       }
+      if (priorAccepted?.has(w._id)) {
+        tierRank += 10; // Prefer any untried weaver before falling back to a prior releaser
+      }
 
-      scored.push({ weaver: w, tier, tierRank, isStockReuse: holdsReadyStock });
+      scored.push({
+        weaver: w,
+        tier,
+        tierRank,
+        isStockReuse: holdsReadyStock,
+        usesPaidReservation,
+        stockDocId,
+      });
     }
 
     scored.sort((a, b) => a.tierRank - b.tierRank || b.weaver.creditScore - a.weaver.creditScore);
@@ -275,8 +370,24 @@ export async function dispatchPoolTick(
         chosen.weaver._id,
         (pendingOfferCountByWeaver.get(chosen.weaver._id) ?? 0) + 1,
       );
-      if (!chosen.isStockReuse) {
+      if (chosen.isStockReuse) {
+        if (!chosen.usesPaidReservation && chosen.stockDocId) {
+          const only = pkg.itemsSnapshot[0]!;
+          freeStockByDocId.set(
+            chosen.stockDocId,
+            Math.max(0, (freeStockByDocId.get(chosen.stockDocId) ?? 0) - only.qty),
+          );
+        }
+      } else {
         backlogByWeaver.set(chosen.weaver._id, (backlogByWeaver.get(chosen.weaver._id) ?? 0) + pkg.totalMin);
+        let gMap = pendingOfferGramsByWeaver.get(chosen.weaver._id);
+        if (!gMap) {
+          gMap = new Map();
+          pendingOfferGramsByWeaver.set(chosen.weaver._id, gMap);
+        }
+        for (const [yarnCode, needG] of pkgNeedGrams.entries()) {
+          gMap.set(yarnCode, (gMap.get(yarnCode) ?? 0) + needG);
+        }
       }
     }
   }
@@ -361,18 +472,29 @@ export async function respondDispatchOffer(
 
   if (pkg.isReadyStockReuse) {
     const only = pkg.itemsSnapshot[0]!;
-    const stockId = weaverStockId(params.weaverId, only.skuCode);
-    await db.atomicUpdate<WeaverStockDoc>(
-      COLLECTIONS.WEAVER_STOCK,
-      stockId,
-      (s) => s.availableQty >= only.qty,
-      (s) => ({
-        ...s,
-        availableQty: s.availableQty - only.qty,
-        version: s.version + 1,
-        updatedAt: now,
-      }),
-    );
+    const stockRes = await consumeReadyStockForAcceptedOffer(db, {
+      weaverId: params.weaverId,
+      skuCode: only.skuCode,
+      qty: only.qty,
+      orderIds: pkg.orderIds,
+      packageId: pkg._id,
+      nowUtcMs: now,
+    });
+    if (!stockRes.consumed) {
+      // Stock was already consumed concurrently; return package cleanly to waiting_dispatch
+      const backTr = await transitionStatus(
+        db,
+        COLLECTIONS.ORDER_PACKAGES,
+        pkg._id,
+        ORDER_PACKAGE_STATUS_SPEC,
+        "offered",
+        "waiting_dispatch",
+        pkg.version,
+        () => ({ assignedWeaverId: undefined, isReadyStockReuse: false }),
+        now,
+      );
+      return { status: backTr.doc?.status ?? "waiting_dispatch", triggeredYarnChecks: [] };
+    }
 
     const tr = await transitionStatus(
       db,
@@ -412,7 +534,8 @@ export async function respondDispatchOffer(
 
   let triggeredYarnChecks: string[] = [];
   if (tr.moved && tr.doc) {
-    const yarnRes = await consumeYarnForPackage(db, params.weaverId, tr.doc, {}, now);
+    const unitWeightByYarn = await loadUnitWeightMap(db);
+    const yarnRes = await consumeYarnForPackage(db, params.weaverId, tr.doc, unitWeightByYarn, now);
     triggeredYarnChecks = yarnRes.triggeredCheckCodes;
   }
 
@@ -420,13 +543,14 @@ export async function respondDispatchOffer(
 }
 
 /**
- * Unlocks structured lyric-style pattern ONLY for the weaver's head-of-queue (`queueSeq === 1`) package.
+ * Unlocks structured lyric-style pattern(s) ONLY for the weaver's head-of-queue (`queueSeq === 1`) package.
  */
 export async function getHeadPatternForWeaver(
   db: DbAdapter,
-  params: { packageId: string; weaverId: string; nowUtcMs?: number },
+  params: { packageId: string; weaverId: string; skuCode?: string; nowUtcMs?: number },
 ): Promise<{
   pattern: PatternDoc;
+  patterns: PatternDoc[];
   watermarkText: string;
   urlExpiresAt: number;
 }> {
@@ -442,10 +566,19 @@ export async function getHeadPatternForWeaver(
     );
   }
 
-  const sku = pkg.itemsSnapshot[0]?.skuCode;
-  const style = sku ? await db.get<StyleDoc>(COLLECTIONS.STYLES, sku) : null;
-  const pattern = style ? await db.get<PatternDoc>(COLLECTIONS.PATTERNS, style.patternId) : null;
-  if (!pattern) {
+  const patterns: PatternDoc[] = [];
+  const seenSku = new Set<string>();
+  for (const item of pkg.itemsSnapshot) {
+    if (seenSku.has(item.skuCode)) continue;
+    seenSku.add(item.skuCode);
+    const st = await db.get<StyleDoc>(COLLECTIONS.STYLES, item.skuCode);
+    const pat = st ? await db.get<PatternDoc>(COLLECTIONS.PATTERNS, st.patternId) : null;
+    if (pat) patterns.push(pat);
+  }
+  const primary = params.skuCode
+    ? patterns.find((p) => p.skuCode === params.skuCode) ?? patterns[0]
+    : patterns[0];
+  if (!primary) {
     throw new AppError(ERROR_CODES.NOT_FOUND, "Pattern not found for style");
   }
 
@@ -458,7 +591,8 @@ export async function getHeadPatternForWeaver(
   );
 
   return {
-    pattern,
+    pattern: primary,
+    patterns,
     watermarkText: `${weaver?.weaverNo ?? params.weaverId} · 无限天真严禁外传`,
     urlExpiresAt: now + 5 * 60 * 1000, // 5-minute ephemeral signed URL TTL
   };
@@ -495,6 +629,8 @@ export async function releaseMakingOrderVoluntarily(
   );
 
   if (tr.moved) {
+    const unitWeightByYarn = await loadUnitWeightMap(db);
+    await restoreYarnForPackage(db, params.weaverId, pkg, unitWeightByYarn, now);
     await compactWeaverQueue(db, params.weaverId, now);
     if (penalty > 0) {
       await db.atomicUpdate<UserDoc>(
@@ -522,6 +658,23 @@ export async function sweepOffersAndStalledPackages(
     (o) => o.status === "pending" && nowUtcMs >= o.expireAt,
   );
   for (const off of expiredOffers) {
+    const pkg = await db.get<OrderPackageDoc>(COLLECTIONS.ORDER_PACKAGES, off.packageId);
+    // If buyer already cancelled the package before offer expiry, cancel the offer cleanly without penalizing weaver!
+    if (!pkg || pkg.status !== "offered") {
+      await transitionStatus(
+        db,
+        COLLECTIONS.DISPATCH_OFFERS,
+        off._id,
+        DISPATCH_OFFER_STATUS_SPEC,
+        "pending",
+        "cancelled",
+        off.version,
+        () => ({ respondedAt: nowUtcMs }),
+        nowUtcMs,
+      );
+      continue;
+    }
+
     const oTr = await transitionStatus(
       db,
       COLLECTIONS.DISPATCH_OFFERS,
@@ -536,20 +689,17 @@ export async function sweepOffersAndStalledPackages(
     if (!oTr.moved) continue;
     timedOutOffers++;
 
-    const pkg = await db.get<OrderPackageDoc>(COLLECTIONS.ORDER_PACKAGES, off.packageId);
-    if (pkg && pkg.status === "offered") {
-      await transitionStatus(
-        db,
-        COLLECTIONS.ORDER_PACKAGES,
-        pkg._id,
-        ORDER_PACKAGE_STATUS_SPEC,
-        "offered",
-        "waiting_dispatch",
-        pkg.version,
-        () => ({ assignedWeaverId: undefined, isReadyStockReuse: false }),
-        nowUtcMs,
-      );
-    }
+    await transitionStatus(
+      db,
+      COLLECTIONS.ORDER_PACKAGES,
+      pkg._id,
+      ORDER_PACKAGE_STATUS_SPEC,
+      "offered",
+      "waiting_dispatch",
+      pkg.version,
+      () => ({ assignedWeaverId: undefined, isReadyStockReuse: false }),
+      nowUtcMs,
+    );
 
     // 3 consecutive timeouts -> pause weaver for 7 days
     await db.atomicUpdate<UserDoc>(
@@ -573,6 +723,7 @@ export async function sweepOffersAndStalledPackages(
     COLLECTIONS.ORDER_PACKAGES,
     (p) => p.status === "making" && p.queueSeq === 1,
   );
+  const unitWeightByYarn = headMaking.length > 0 ? await loadUnitWeightMap(db) : {};
   for (const pkg of headMaking) {
     const lastActive = pkg.lastProgressAt ?? pkg.acceptedAt ?? pkg.updatedAt;
     if (!pkg.stallPromptedAt && nowUtcMs - lastActive >= 24 * HOUR_MS) {
@@ -600,7 +751,10 @@ export async function sweepOffersAndStalledPackages(
         );
         if (tr.moved) {
           reclaimedStalls++;
-          if (weaverId) await compactWeaverQueue(db, weaverId, nowUtcMs);
+          if (weaverId) {
+            await restoreYarnForPackage(db, weaverId, pkg, unitWeightByYarn, nowUtcMs);
+            await compactWeaverQueue(db, weaverId, nowUtcMs);
+          }
         }
       }
     }

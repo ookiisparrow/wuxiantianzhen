@@ -2,5 +2,6 @@
   "name": "@wxtz/mp-buyer",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "description": "无限天真·买家商城与粉丝陪审团小程序 (mp-buyer)"
 }

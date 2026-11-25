@@ -59,14 +59,14 @@ export function createAdminApiClient(opts: AdminClientOptions) {
       userId: string;
       trackingNo: string;
       passed: boolean;
-      shippingModeConfirmed?: "pickup" | "self_dropoff";
+      shippingModeConfirmed?: "auto_pickup" | "self_dropoff" | "pickup";
     }) => invoke("admin.funnelSampleInspect", params),
     funnelApproveDeposit: (params: {
       userId: string;
       weaverNo: string;
       dailyCapacityMin?: number;
       base12Codes: string[];
-      depositChannel: "mp_buyer_cashier" | "bank_or_wx_voucher";
+      depositChannel: "mp_buyer_cashier" | "manual_transfer_verify";
       depositRefId: string;
     }) => invoke("admin.funnelApproveDeposit", params),
     promoteWeaverPool: (params: { userId: string; pool: "mp" | "live" }) =>

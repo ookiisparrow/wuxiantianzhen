@@ -27,16 +27,19 @@ Page({
       const user = data.user || {};
       const acc = data.account || {};
       const inv = user.yarnInventory || {};
-      const inventoryList = Object.entries(inv).map(([yarnCode, st]: [string, any]) => ({
-        yarnCode,
-        wholeSkeins: st.wholeSkeins ?? 0,
-        usedSinceCheckG: st.usedSinceCheckG ?? 0,
-        lowStock: Boolean(st.lowStock) || (st.wholeSkeins ?? 0) <= 1,
-        claimQty: st.lowStock ? 3 : 0,
-      }));
+      const inventoryList = Object.entries(inv).map(([yarnCode, st]: [string, any]) => {
+        const isLow = st.status === "low" || st.status === "empty" || (st.wholeSkeins ?? 0) <= 1;
+        return {
+          yarnCode,
+          wholeSkeins: st.wholeSkeins ?? 0,
+          usedSinceCheckG: st.usedSinceCheckG ?? 0,
+          lowStock: isLow,
+          claimQty: isLow ? 3 : 0,
+        };
+      });
       this.setData({
         yarnPoolYuan: fenToYuanText(acc.yarnPoolBalanceFen),
-        defaultSendAddrId: user.defaultSendAddrId || "addr_default",
+        defaultSendAddrId: user.defaultSendAddrId || "",
         inventoryList,
         claims: data.yarnClaims || [],
       });
@@ -64,10 +67,23 @@ Page({
       return;
     }
     await accumulateWeaverSubscribeQuota();
+    let sendAddrId = this.data.defaultSendAddrId;
+    if (!sendAddrId) {
+      const saved = await callWeaverCloud("weaver.saveAddress", {
+        contactName: "织女默认收线人",
+        contactPhone: "13800000000",
+        province: "浙江省",
+        city: "杭州市",
+        district: "西湖区",
+        detail: "默认收线地址",
+        isDefault: true,
+      });
+      sendAddrId = saved._id;
+      this.setData({ defaultSendAddrId: sendAddrId });
+    }
     await callWeaverCloud("weaver.submitYarnClaim", {
-      sendAddrId: this.data.defaultSendAddrId,
+      sendAddrId,
       items,
-      shippingFeeFen: 250,
     });
     wx.showToast({ title: "申领成功，待周度集单直发", icon: "success" });
     this.loadYarnState();

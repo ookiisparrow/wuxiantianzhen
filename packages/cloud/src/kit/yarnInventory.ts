@@ -114,10 +114,13 @@ export async function consumeYarnForPackage(
         const nextUsed = cur.usedSinceCheckG + grams;
         const shouldCheck = cur.needCheck || nextUsed >= unitG;
         if (shouldCheck) triggeredCheckCodes.push(yarnCode);
+        const remG = Math.max(0, cur.wholeSkeins * unitG - nextUsed);
+        const effSkeins = remG <= 0 ? 0 : Math.ceil(remG / unitG);
         nextInv[yarnCode] = {
           ...cur,
           usedSinceCheckG: nextUsed,
           needCheck: shouldCheck,
+          status: computeSlotStatus(effSkeins, DEFAULT_LOW_ALERT_SKEINS),
         };
       }
       return { ...u, yarnInventory: nextInv, updatedAt: nowUtcMs };
@@ -128,6 +131,52 @@ export async function consumeYarnForPackage(
     throw new AppError(ERROR_CODES.NOT_FOUND, `Weaver not found: ${weaverId}`);
   }
   return { skippedReadyStock: false, triggeredCheckCodes };
+}
+
+/**
+ * Restores BOM grams back to `yarnInventory` when an unmade order package is voluntarily
+ * released or reclaimed by the stall watchdog before completion.
+ */
+export async function restoreYarnForPackage(
+  db: DbAdapter,
+  weaverId: string,
+  pkg: Pick<OrderPackageDoc, "isReadyStockReuse" | "itemsSnapshot">,
+  unitWeightByYarn: Readonly<Record<string, number>> = {},
+  nowUtcMs: number = Date.now(),
+): Promise<void> {
+  if (pkg.isReadyStockReuse) return;
+
+  const gramUsage = new Map<string, number>();
+  for (const item of pkg.itemsSnapshot) {
+    for (const bom of item.yarnBomSnapshot) {
+      gramUsage.set(bom.yarnCode, (gramUsage.get(bom.yarnCode) ?? 0) + bom.consumedG * item.qty);
+    }
+  }
+  if (gramUsage.size === 0) return;
+
+  await db.atomicUpdate<UserDoc>(
+    COLLECTIONS.USERS,
+    weaverId,
+    () => true,
+    (u) => {
+      const nextInv = { ...u.yarnInventory };
+      for (const [yarnCode, grams] of gramUsage.entries()) {
+        const cur = nextInv[yarnCode];
+        if (!cur) continue;
+        const unitG = unitWeightByYarn[yarnCode] ?? DEFAULT_SKEIN_G;
+        const nextUsed = Math.max(0, cur.usedSinceCheckG - grams);
+        const remG = Math.max(0, cur.wholeSkeins * unitG - nextUsed);
+        const effSkeins = remG <= 0 ? 0 : Math.ceil(remG / unitG);
+        nextInv[yarnCode] = {
+          ...cur,
+          usedSinceCheckG: nextUsed,
+          needCheck: nextUsed >= unitG,
+          status: computeSlotStatus(effSkeins, DEFAULT_LOW_ALERT_SKEINS),
+        };
+      }
+      return { ...u, yarnInventory: nextInv, updatedAt: nowUtcMs };
+    },
+  );
 }
 
 /**

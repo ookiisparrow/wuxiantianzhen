@@ -88,7 +88,7 @@ async function applyWeaverAccountDeltas(
   db: DbAdapter,
   lines: readonly LedgerLine[],
   nowUtcMs: number,
-): Promise<void> {
+): Promise<Array<{ userId: string; d: { yarn: number; payable: number; deposit: number } }>> {
   // Liability accounts increase on credit and decrease on debit.
   const deltas = new Map<string, { yarn: number; payable: number; deposit: number }>();
 
@@ -105,38 +105,62 @@ async function applyWeaverAccountDeltas(
     else if (line.accountCode === LEDGER_ACCOUNT_CODES.LIAB_WEAVER_DEPOSIT) rec.deposit += netCredit;
   }
 
-  for (const [userId, d] of deltas.entries()) {
-    if (d.yarn === 0 && d.payable === 0 && d.deposit === 0) continue;
-    await ensureWeaverAccount(db, userId, nowUtcMs);
-    const id = weaverAccountId(userId);
-    const res = await db.atomicUpdate<WeaverAccountDoc>(
-      COLLECTIONS.WEAVER_ACCOUNTS,
-      id,
-      (cur) =>
-        (cur.yarnPoolBalanceFen as number) + d.yarn >= 0 &&
-        (cur.payableBalanceFen as number) + d.payable >= 0 &&
-        (cur.depositFen as number) + d.deposit >= 0,
-      (cur) => ({
-        ...cur,
-        yarnPoolBalanceFen: asNonNegativeFen((cur.yarnPoolBalanceFen as number) + d.yarn),
-        payableBalanceFen: asNonNegativeFen((cur.payableBalanceFen as number) + d.payable),
-        depositFen: asNonNegativeFen((cur.depositFen as number) + d.deposit),
-        version: cur.version + 1,
-        updatedAt: nowUtcMs,
-      }),
-    );
-    if (!res.updated) {
-      throw new AppError(
-        ERROR_CODES.INSUFFICIENT_YARN_POOL,
-        `Weaver account ${userId} rejected negative balance delta`,
-        { userId, deltas: d },
+  const applied: Array<{ userId: string; d: { yarn: number; payable: number; deposit: number } }> = [];
+  try {
+    for (const [userId, d] of deltas.entries()) {
+      if (d.yarn === 0 && d.payable === 0 && d.deposit === 0) continue;
+      await ensureWeaverAccount(db, userId, nowUtcMs);
+      const id = weaverAccountId(userId);
+      const res = await db.atomicUpdate<WeaverAccountDoc>(
+        COLLECTIONS.WEAVER_ACCOUNTS,
+        id,
+        (cur) =>
+          (cur.yarnPoolBalanceFen as number) + d.yarn >= 0 &&
+          (cur.payableBalanceFen as number) + d.payable >= 0 &&
+          (cur.depositFen as number) + d.deposit >= 0,
+        (cur) => ({
+          ...cur,
+          yarnPoolBalanceFen: asNonNegativeFen((cur.yarnPoolBalanceFen as number) + d.yarn),
+          payableBalanceFen: asNonNegativeFen((cur.payableBalanceFen as number) + d.payable),
+          depositFen: asNonNegativeFen((cur.depositFen as number) + d.deposit),
+          version: cur.version + 1,
+          updatedAt: nowUtcMs,
+        }),
+      );
+      if (!res.updated) {
+        throw new AppError(
+          ERROR_CODES.INSUFFICIENT_YARN_POOL,
+          `Weaver account ${userId} rejected negative balance delta`,
+          { userId, deltas: d },
+        );
+      }
+      applied.push({ userId, d });
+    }
+    return applied;
+  } catch (err) {
+    // Roll back any already-applied subaccount deltas on multi-user entry failure
+    for (const item of applied) {
+      await db.atomicUpdate<WeaverAccountDoc>(
+        COLLECTIONS.WEAVER_ACCOUNTS,
+        weaverAccountId(item.userId),
+        () => true,
+        (cur) => ({
+          ...cur,
+          yarnPoolBalanceFen: asNonNegativeFen((cur.yarnPoolBalanceFen as number) - item.d.yarn),
+          payableBalanceFen: asNonNegativeFen((cur.payableBalanceFen as number) - item.d.payable),
+          depositFen: asNonNegativeFen((cur.depositFen as number) - item.d.deposit),
+          version: cur.version + 1,
+          updatedAt: nowUtcMs,
+        }),
       );
     }
+    throw err;
   }
 }
 
 /**
  * Posts an immutable double-entry ledger record. Idempotent via deterministic `_id`.
+ * Overdraft gate runs BEFORE inserting `ledgerEntries` so rejected debits never orphan ledger rows.
  */
 export async function postLedgerEntry(
   db: DbAdapter,
@@ -145,20 +169,38 @@ export async function postLedgerEntry(
 ): Promise<{ posted: boolean; alreadyExists: boolean }> {
   assertBalancedLines(entry.lines);
 
-  const ins = await db.insert<LedgerEntryDoc>(COLLECTIONS.LEDGER_ENTRIES, entry);
-  if (!ins.inserted) {
+  const existing = await db.get<LedgerEntryDoc>(COLLECTIONS.LEDGER_ENTRIES, entry._id);
+  if (existing) {
     return { posted: false, alreadyExists: true };
   }
-  if (!skipAccountDelta) {
-    await applyWeaverAccountDeltas(db, entry.lines, entry.createdAt);
+
+  const applied = skipAccountDelta ? [] : await applyWeaverAccountDeltas(db, entry.lines, entry.createdAt);
+  const ins = await db.insert<LedgerEntryDoc>(COLLECTIONS.LEDGER_ENTRIES, entry);
+  if (!ins.inserted) {
+    for (const item of applied) {
+      await db.atomicUpdate<WeaverAccountDoc>(
+        COLLECTIONS.WEAVER_ACCOUNTS,
+        weaverAccountId(item.userId),
+        () => true,
+        (cur) => ({
+          ...cur,
+          yarnPoolBalanceFen: asNonNegativeFen((cur.yarnPoolBalanceFen as number) - item.d.yarn),
+          payableBalanceFen: asNonNegativeFen((cur.payableBalanceFen as number) - item.d.payable),
+          depositFen: asNonNegativeFen((cur.depositFen as number) - item.d.deposit),
+          version: cur.version + 1,
+          updatedAt: entry.createdAt,
+        }),
+      );
+    }
+    return { posted: false, alreadyExists: true };
   }
   return { posted: true, alreadyExists: false };
 }
 
 /**
  * Accrues weaver earnings upon 7-day post-signoff settlement eligibility (docs/07 §6 #2).
- * Pure craft labor (`EXP_CRAFT_COST`) and BOM material cost (`EXP_MATERIAL_COST`) are
- * strictly separated: material cost NEVER deducts from weaver's pure craft fee.
+ * Pure craft labor (`EXP_CRAFT_COST`), shipping subsidy (`EXP_SHIPPING_PLATFORM`), and BOM material cost
+ * (`EXP_MATERIAL_COST`) are strictly separated on distinct expense accounts.
  */
 export async function accrueSettledPackage(
   db: DbAdapter,
@@ -168,6 +210,7 @@ export async function accrueSettledPackage(
     craftFeeFen: Fen;
     weaverShipShareFen: Fen;
     yarnPoolAccrualFen: Fen;
+    selfShipReimbFen?: Fen;
     nowUtcMs?: number;
   },
 ): Promise<{ posted: boolean; alreadyExists: boolean }> {
@@ -175,14 +218,22 @@ export async function accrueSettledPackage(
   const craftFee = asPositiveFen(params.craftFeeFen);
   const shipShare = asNonNegativeFen(params.weaverShipShareFen);
   const yarnAccrual = asNonNegativeFen(params.yarnPoolAccrualFen);
+  const selfShipReimb = asNonNegativeFen(params.selfShipReimbFen ?? ZERO_FEN);
   if (shipShare > craftFee) {
     throw new AppError(ERROR_CODES.VALIDATION_ERROR, "weaverShipShareFen cannot exceed craftFeeFen");
   }
-  const netPayable = subFen(craftFee, shipShare);
+  const netPayable = addFen(subFen(craftFee, shipShare), selfShipReimb);
 
   const lines: LedgerLine[] = [
     { accountCode: LEDGER_ACCOUNT_CODES.EXP_CRAFT_COST, debitFen: craftFee, creditFen: ZERO_FEN },
   ];
+  if (selfShipReimb > 0) {
+    lines.push({
+      accountCode: LEDGER_ACCOUNT_CODES.EXP_SHIPPING_PLATFORM,
+      debitFen: selfShipReimb,
+      creditFen: ZERO_FEN,
+    });
+  }
   if (netPayable > 0) {
     lines.push({
       accountCode: LEDGER_ACCOUNT_CODES.LIAB_WEAVER_PAYABLE,
@@ -233,6 +284,7 @@ export async function debitYarnPoolAtomic(
     hasMaterialPack: boolean;
     materialsCostFen: Fen;
     shippingFeeFen: Fen;
+    attemptNo?: number;
     minQty?: number;
     nowUtcMs?: number;
   },
@@ -247,7 +299,8 @@ export async function debitYarnPoolAtomic(
 
   const now = params.nowUtcMs ?? Date.now();
   const totalCost = addFen(asPositiveFen(params.materialsCostFen), asNonNegativeFen(params.shippingFeeFen));
-  const entryId = ledgerKeyYarnOut(params.claimId);
+  const baseKey = ledgerKeyYarnOut(params.claimId);
+  const entryId = params.attemptNo && params.attemptNo > 1 ? `${baseKey}:v${params.attemptNo}` : baseKey;
 
   // Idempotency short-circuit before touching balance lock
   const existingEntry = await db.get<LedgerEntryDoc>(COLLECTIONS.LEDGER_ENTRIES, entryId);

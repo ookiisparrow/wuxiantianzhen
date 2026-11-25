@@ -20,7 +20,7 @@ import {
   type YarnClaimDoc,
 } from "@wxtz/shared";
 import type { DbAdapter } from "../kit/db.ts";
-import { ledgerKeyPayout, yarnClaimId } from "../kit/ids.ts";
+import { ledgerKeyPayout, ledgerKeyYarnRefund, yarnClaimId } from "../kit/ids.ts";
 import { debitYarnPoolAtomic, postLedgerEntry } from "../kit/ledger.ts";
 import { transitionStatus } from "../kit/transition.ts";
 import { receiveYarnClaimToInventory } from "../kit/yarnInventory.ts";
@@ -93,6 +93,8 @@ export async function submitWeeklyYarnClaim(
     });
   }
 
+  const nextAttemptVersion = (existing?.version ?? 0) + 1;
+
   // Atomic yarn pool deduction (enforces >=3 skeins or pack, and zero overdraft!)
   await debitYarnPoolAtomic(db, {
     claimId,
@@ -101,6 +103,7 @@ export async function submitWeeklyYarnClaim(
     hasMaterialPack,
     materialsCostFen: materialsCost,
     shippingFeeFen: asNonNegativeFen(params.shippingFeeFen),
+    attemptNo: nextAttemptVersion,
     nowUtcMs: now,
   });
 
@@ -114,11 +117,63 @@ export async function submitWeeklyYarnClaim(
     materialsCostFen: materialsCost,
     shippingFeeFen: asNonNegativeFen(params.shippingFeeFen),
     status: "confirmed",
-    version: 1,
+    version: nextAttemptVersion,
     createdAt: now,
   };
   await db.put(COLLECTIONS.YARN_CLAIMS, doc);
   return doc;
+}
+
+/**
+ * Cancels an un-dispatched weekly yarn claim and refunds the deducted yarn pool balance.
+ */
+export async function cancelWeeklyYarnClaim(
+  db: DbAdapter,
+  params: { claimId: string; weaverId: string; nowUtcMs?: number },
+): Promise<YarnClaimDoc> {
+  const now = params.nowUtcMs ?? Date.now();
+  const claim = await db.get<YarnClaimDoc>(COLLECTIONS.YARN_CLAIMS, params.claimId);
+  if (!claim || claim.weaverId !== params.weaverId) {
+    throw new AppError(ERROR_CODES.FORBIDDEN, "线材申领单不存在或无权操作");
+  }
+  if (claim.status !== "confirmed" && claim.status !== "reserved") {
+    throw new AppError(ERROR_CODES.INVALID_STATE_TRANSITION, "已导出直发的申领单不可取消");
+  }
+  const tr = await transitionStatus(
+    db,
+    COLLECTIONS.YARN_CLAIMS,
+    claim._id,
+    YARN_CLAIM_STATUS_SPEC,
+    claim.status,
+    "cancelled",
+    claim.version,
+    undefined,
+    now,
+  );
+  if (tr.moved && tr.doc) {
+    const totalRefund = addFen(claim.materialsCostFen, claim.shippingFeeFen);
+    const refundKey =
+      claim.version > 1 ? `${ledgerKeyYarnRefund(claim._id)}:v${claim.version}` : ledgerKeyYarnRefund(claim._id);
+    await postLedgerEntry(db, {
+      _id: refundKey,
+      eventType: "yarn_refund",
+      bizId: claim._id,
+      payeeId: claim.weaverId,
+      lines: [
+        { accountCode: LEDGER_ACCOUNT_CODES.LIAB_SUPPLIER_PAYABLE, debitFen: totalRefund, creditFen: ZERO_FEN },
+        {
+          accountCode: LEDGER_ACCOUNT_CODES.LIAB_YARN_POOL,
+          subAccountId: claim.weaverId,
+          debitFen: ZERO_FEN,
+          creditFen: totalRefund,
+        },
+      ],
+      memo: `取消周度线材申领 ${claim._id} 退回个人线材池`,
+      createdAt: now,
+    });
+    return tr.doc;
+  }
+  return claim;
 }
 
 /**
@@ -131,11 +186,12 @@ export async function exportSupplierCsvAndMarkDispatched(
   params: { weekKey: string; nowUtcMs?: number },
 ): Promise<{ exportBatchId: string; exportedClaimCount: number; csvContent: string }> {
   const now = params.nowUtcMs ?? Date.now();
-  const exportBatchId = `YARN_${params.weekKey}_${formatCstCompactYmd(now)}`;
+  const normalizedWeekKey = params.weekKey.replace(/-/g, "").trim();
+  const exportBatchId = `YARN_${normalizedWeekKey}_${formatCstCompactYmd(now)}`;
 
   const claims = await db.find<YarnClaimDoc>(
     COLLECTIONS.YARN_CLAIMS,
-    (c) => c.weekKey === params.weekKey && c.status === "confirmed",
+    (c) => c.weekKey.replace(/-/g, "") === normalizedWeekKey && c.status === "confirmed",
   );
 
   const lines: string[] = [
@@ -224,13 +280,20 @@ export async function confirmYarnClaimReceived(
     throw new AppError(ERROR_CODES.CAS_CONFLICT, "申领单状态已变更");
   }
 
-  return receiveYarnClaimToInventory(
-    db,
-    params.weaverId,
-    claim.items.map((i) => ({ yarnCode: i.yarnCode, qty: i.qty })),
-    1,
-    now,
-  );
+  // Expand material_pack items into their constituent yarn color skeins (`packItems`)
+  const expandedItems: Array<{ yarnCode: string; qty: number }> = [];
+  for (const i of claim.items) {
+    const cat = await db.get<YarnCatalogDoc>(COLLECTIONS.YARN_CATALOG, i.yarnCode);
+    if ((cat?.isMaterialPack || cat?.itemType === "material_pack") && cat.packItems && cat.packItems.length > 0) {
+      for (const sub of cat.packItems) {
+        expandedItems.push({ yarnCode: sub.yarnCode, qty: i.qty * sub.qty });
+      }
+    } else if (cat?.itemType !== "accessory_kit") {
+      expandedItems.push({ yarnCode: i.yarnCode, qty: i.qty });
+    }
+  }
+
+  return receiveYarnClaimToInventory(db, params.weaverId, expandedItems, 1, now);
 }
 
 export interface SettlementBatchDoc {
@@ -265,7 +328,7 @@ export async function createSettlementBatchAndExportBankCsv(
   );
   const readyPkgs = await db.find<OrderPackageDoc>(
     COLLECTIONS.ORDER_PACKAGES,
-    (p) => p.status === "settled_ready",
+    (p) => p.status === "settled_ready" || p.status === "lost_compensated",
   );
 
   const lines = ["收款户名,收款银行账号,金额(元),备注(附订单台账批次)"];
@@ -355,13 +418,13 @@ export async function confirmSettlementBatchPaid(
 
     for (const pkgId of item.packageIds) {
       const pkg = await db.get<OrderPackageDoc>(COLLECTIONS.ORDER_PACKAGES, pkgId);
-      if (pkg && pkg.status === "settled_ready") {
+      if (pkg && (pkg.status === "settled_ready" || pkg.status === "lost_compensated")) {
         const tr = await transitionStatus(
           db,
           COLLECTIONS.ORDER_PACKAGES,
           pkg._id,
           ORDER_PACKAGE_STATUS_SPEC,
-          "settled_ready",
+          pkg.status,
           "settled",
           pkg.version,
           () => ({ settledBatchId: batchId }),

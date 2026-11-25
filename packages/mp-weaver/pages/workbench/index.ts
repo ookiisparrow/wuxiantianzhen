@@ -30,7 +30,7 @@ Page({
       // Check if any yarn color hit 50g cumulative consumption check
       let skeinCheckItem: { yarnCode: string; expectedSkeins: number } | null = null;
       for (const [yarnCode, st] of Object.entries(inv) as Array<[string, any]>) {
-        if (st?.needsCheck) {
+        if (st?.needCheck) {
           skeinCheckItem = { yarnCode, expectedSkeins: st.wholeSkeins ?? 0 };
           break;
         }

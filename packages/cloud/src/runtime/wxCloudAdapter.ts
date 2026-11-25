@@ -13,6 +13,9 @@ export interface WxCloudCollection {
   };
   add(params: { data: Record<string, unknown> }): Promise<unknown>;
   where(query: Record<string, unknown>): {
+    skip?(offset: number): {
+      limit(n: number): { get(): Promise<{ data: unknown[] }> };
+    };
     limit(n: number): { get(): Promise<{ data: unknown[] }> };
   };
 }
@@ -26,6 +29,11 @@ function stripId(doc: BaseDoc): Record<string, unknown> {
   const copy: Record<string, unknown> = { ...(doc as unknown as Record<string, unknown>) };
   delete copy._id;
   return copy;
+}
+
+function isDocNotFoundError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return /not exist|does not exist|cannot find|-502005|DOCUMENT_NOT_EXIST/i.test(msg);
 }
 
 /**
@@ -44,15 +52,35 @@ export class WxCloudDbAdapter implements DbAdapter {
       const res = await this.db.collection(col).doc(id).get();
       if (!res || !res.data) return null;
       return { ...(res.data as Record<string, unknown>), _id: id } as T;
-    } catch {
-      return null;
+    } catch (err: unknown) {
+      if (isDocNotFoundError(err)) return null;
+      throw err;
     }
   }
 
   async find<T extends BaseDoc>(col: CollectionName, predicate: (doc: T) => boolean): Promise<T[]> {
     const out: T[] = [];
-    // CloudBase cloud-side max page size is 1000; filter in memory for flexible domain predicates
-    const res = await this.db.collection(col).where({}).limit(1000).get();
+    const baseQuery = this.db.collection(col).where({});
+
+    if (typeof baseQuery.skip === "function") {
+      // Real CloudBase server SDK caps single `.get()` at 100 docs; paginate cleanly until exhausted
+      const pageSize = 100;
+      let offset = 0;
+      while (true) {
+        const res = await baseQuery.skip(offset).limit(pageSize).get();
+        const batch = res.data ?? [];
+        for (const raw of batch) {
+          const doc = raw as T;
+          if (predicate(doc)) out.push(doc);
+        }
+        if (batch.length < pageSize) break;
+        offset += batch.length;
+      }
+      return out;
+    }
+
+    // Fallback for lightweight in-memory test mocks without `.skip()`
+    const res = await baseQuery.limit(Number.MAX_SAFE_INTEGER).get();
     for (const raw of res.data ?? []) {
       const doc = raw as T;
       if (predicate(doc)) out.push(doc);
@@ -96,13 +124,17 @@ export class WxCloudDbAdapter implements DbAdapter {
         if (snap?.data) {
           current = { ...(snap.data as Record<string, unknown>), _id: id } as T;
         }
-      } catch {
+      } catch (err: unknown) {
+        if (!isDocNotFoundError(err)) throw err;
         current = null;
       }
       if (!current) return { updated: false, doc: null };
       if (!guard(current)) return { updated: false, doc: current };
 
       const next = mutate(structuredClone(current));
+      if (next._id !== id) {
+        throw new AppError(ERROR_CODES.VALIDATION_ERROR, `Cannot mutate _id on ${col}/${id}`);
+      }
       await tx.collection(col).doc(id).set({ data: stripId(next) });
       return { updated: true, doc: next };
     });

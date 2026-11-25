@@ -22,13 +22,13 @@ Page({
           const sell = await callBuyerCloud("buyer.checkSellability", {
             productId: p._id,
             qty: 1,
-          }).catch(() => ({ sellable: false, availableUnits: 0 }));
+          }).catch(() => ({ sellable: false, availableReadyUnits: 0 }));
           return {
             ...p,
             priceYuan: fenToYuanText(p.priceFen),
             readyCount: readyStockBySku[p.skuCode] || 0,
             sellable: Boolean(sell.sellable),
-            availableUnits: sell.availableUnits ?? 0,
+            availableUnits: sell.availableReadyUnits ?? sell.availableUnits ?? 0,
           };
         }),
       );

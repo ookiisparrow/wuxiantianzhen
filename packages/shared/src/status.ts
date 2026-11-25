@@ -47,9 +47,9 @@ export const ORDER_PACKAGE_STATUS_SPEC: StateSpec<OrderPackageStatus> = {
     "cancelled_made", // 开工后买家退款（固定款继续做完入 weaverStock）
     "manual_hold", // 队首严重卡单或超期
   ],
-  photo_review: ["awaiting_seal", "making"],
-  awaiting_seal: ["ready_to_ship", "manual_hold"],
-  ready_to_ship: ["shipped", "manual_hold"],
+  photo_review: ["awaiting_seal", "making", "cancelled_made"],
+  awaiting_seal: ["ready_to_ship", "manual_hold", "cancelled_made"],
+  ready_to_ship: ["shipped", "manual_hold", "cancelled_made"],
   shipped: ["signed", "lost_compensated"],
   signed: ["settled_ready", "returned", "quality_refunded"],
   settled_ready: ["settled"],

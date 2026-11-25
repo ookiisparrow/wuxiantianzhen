@@ -222,7 +222,13 @@ export interface WeaverStockDoc {
   skuCode: string;
   availableQty: number;
   reservedQty: number;
-  reservations: Array<{ orderId: string; qty: number; expireAt: number }>;
+  reservations: Array<{
+    orderId: string;
+    qty: number;
+    expireAt: number;
+    paid?: boolean;
+    packageId?: string;
+  }>;
   items: Array<{
     sourceType: "cancelled_order" | "premade_quota";
     sourcePkgId?: string;
@@ -257,6 +263,7 @@ export interface OrderDoc {
 
 export interface PackageItemSnapshot {
   skuCode: string;
+  skuName?: string;
   qty: number;
   standardMin: number;
   yarnBomSnapshot: Array<{ yarnCode: string; consumedG: number }>;

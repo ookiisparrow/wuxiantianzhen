@@ -32,6 +32,9 @@ export function signAdminJwt(payload: AdminTokenPayload, secret: string): string
 }
 
 export function verifyAdminJwt(token: string | undefined, secret: string, nowUtcMs: number = Date.now()): AdminTokenPayload {
+  if (!secret || secret.length < 16) {
+    throw new AppError(ERROR_CODES.VALIDATION_ERROR, "Admin JWT secret must be at least 16 chars");
+  }
   if (!token) {
     throw new AppError(ERROR_CODES.FORBIDDEN, "缺少运营后台登录凭证");
   }
@@ -40,6 +43,16 @@ export function verifyAdminJwt(token: string | undefined, secret: string, nowUtc
     throw new AppError(ERROR_CODES.FORBIDDEN, "运营后台凭证格式非法");
   }
   const [header, body, sig] = parts as [string, string, string];
+  let headerObj: { alg?: string } | null = null;
+  try {
+    headerObj = JSON.parse(b64urlDecode(header)) as { alg?: string };
+  } catch {
+    throw new AppError(ERROR_CODES.FORBIDDEN, "运营后台凭证头部非法");
+  }
+  if (!headerObj || headerObj.alg !== "HS256") {
+    throw new AppError(ERROR_CODES.FORBIDDEN, "运营后台凭证签名算法非法");
+  }
+
   const expectedSig = crypto.createHmac("sha256", secret).update(`${header}.${body}`).digest("base64url");
 
   const sigBuf = Buffer.from(sig);
@@ -48,8 +61,13 @@ export function verifyAdminJwt(token: string | undefined, secret: string, nowUtc
     throw new AppError(ERROR_CODES.FORBIDDEN, "运营后台凭证签名无效");
   }
 
-  const parsed = JSON.parse(b64urlDecode(body)) as AdminTokenPayload;
-  if (parsed.role !== "admin" || !parsed.sub || parsed.exp <= nowUtcMs) {
+  let parsed: AdminTokenPayload | null = null;
+  try {
+    parsed = JSON.parse(b64urlDecode(body)) as AdminTokenPayload;
+  } catch {
+    throw new AppError(ERROR_CODES.FORBIDDEN, "运营后台凭证载荷非法");
+  }
+  if (!parsed || typeof parsed !== "object" || parsed.role !== "admin" || !parsed.sub || parsed.exp <= nowUtcMs) {
     throw new AppError(ERROR_CODES.FORBIDDEN, "运营后台登录已过期，请重新登录");
   }
   return parsed;

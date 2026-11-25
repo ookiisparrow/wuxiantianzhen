@@ -63,6 +63,7 @@ Page({
       bagStickerCode,
       sealedPhotoFileId,
       pickupWindow,
+      selfDropoffTrackingNo,
     } = this.data;
 
     if (!frontOnScaleCard || !backStitch || !sidePlumpness) {
@@ -81,6 +82,7 @@ Page({
       bagStickerCode: reviewMode === "skip" ? bagStickerCode : undefined,
       sealedPhotoFileId: reviewMode === "skip" ? sealedPhotoFileId : undefined,
       pickupWindow,
+      selfDropoffTrackingNo: reviewMode === "skip" && selfDropoffTrackingNo ? selfDropoffTrackingNo : undefined,
     });
     wx.showToast({
       title: reviewMode === "skip" ? "免审封袋直通待发！" : "已送审（2h极速通道）",

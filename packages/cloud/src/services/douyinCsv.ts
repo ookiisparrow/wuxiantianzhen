@@ -6,7 +6,9 @@ import {
   ERROR_CODES,
   ZERO_FEN,
   asNonNegativeFen,
+  DISPATCH_OFFER_STATUS_SPEC,
   ORDER_PACKAGE_STATUS_SPEC,
+  type DispatchOfferDoc,
   type Fen,
   type ExternalOrderIndexDoc,
   type OrderDoc,
@@ -16,7 +18,8 @@ import {
   type StyleDoc,
 } from "@wxtz/shared";
 import type { DbAdapter } from "../kit/db.ts";
-import { externalOrderIndexId, newOrderId, newPackageId, shipmentId } from "../kit/ids.ts";
+import { dispatchOfferId, externalOrderIndexId, newOrderId, newPackageId, shipmentId } from "../kit/ids.ts";
+import { compactWeaverQueue } from "../kit/queue.ts";
 import { registerCancelledPackageToWeaverStock } from "../kit/stockLock.ts";
 import { transitionStatus } from "../kit/transition.ts";
 
@@ -73,6 +76,14 @@ export async function previewDouyinImport(
     blockingErrors.push("尚未上传今日售后退款表（若今日确实 0 退款，请勾选“确认今日 0 退款”后再导入）");
   }
 
+  for (let i = 0; i < (params.refundRows ?? []).length; i++) {
+    const rr = params.refundRows![i]!;
+    const rid = rr.externalOrderId.trim();
+    if (!rid || SCIENTIFIC_NOTATION_RE.test(rid) || /e\+/i.test(rid)) {
+      blockingErrors.push(`售后退单表第 ${i + 1} 行订单号疑似被 Excel 转为科学计数法或为空：${rr.externalOrderId}`);
+    }
+  }
+
   const styles = await db.find<StyleDoc>(COLLECTIONS.STYLES, () => true);
   const styleMap = new Map(styles.map((s) => [s._id, s]));
 
@@ -94,6 +105,10 @@ export async function previewDouyinImport(
     }
     if (!Number.isInteger(r.qty) || r.qty <= 0) {
       blockingErrors.push(`第 ${i + 1} 行数量非法：${r.qty}`);
+      continue;
+    }
+    if (!Number.isSafeInteger(r.paidFen) || r.paidFen < 0) {
+      blockingErrors.push(`第 ${i + 1} 行实付金额(分)须为非负整数：${r.paidFen}`);
       continue;
     }
 
@@ -167,15 +182,107 @@ export async function commitDouyinImport(
   // Step 1: Process refunds FIRST
   for (const ref of params.refundRows ?? []) {
     const extId = ref.externalOrderId.trim();
-    const idx = await db.get<ExternalOrderIndexDoc>(
-      COLLECTIONS.EXTERNAL_ORDER_INDEX,
-      externalOrderIndexId("douyin_online", extId),
-    );
+    const idxKey = externalOrderIndexId("douyin_online", extId);
+    const idx = await db.get<ExternalOrderIndexDoc>(COLLECTIONS.EXTERNAL_ORDER_INDEX, idxKey);
     if (!idx) continue;
+
+    const ord = await db.get<OrderDoc>(COLLECTIONS.ORDERS, idx.orderId);
+    if (ord?.status === "refunded") continue;
+
     const pkg = await db.get<OrderPackageDoc>(COLLECTIONS.ORDER_PACKAGES, idx.packageId);
     if (!pkg) continue;
 
-    if (pkg.status === "confirming" || pkg.status === "waiting_dispatch" || pkg.status === "offered") {
+    const isPreMake =
+      pkg.status === "confirming" || pkg.status === "waiting_dispatch" || pkg.status === "offered";
+    const isUnshippedPostMake = ["making", "photo_review", "awaiting_seal", "ready_to_ship"].includes(pkg.status);
+
+    if (!isPreMake && !isUnshippedPostMake) continue;
+
+    // Partial refund on a merged package: detach ONLY the refunded order, preserving sibling paid orders!
+    if (pkg.orderIds.length > 1 && ord) {
+      let remainingDeduct = ord.qty;
+      const nextItems: PackageItemSnapshot[] = [];
+      let detachedSnap: PackageItemSnapshot | undefined;
+
+      for (const it of pkg.itemsSnapshot) {
+        if (remainingDeduct > 0 && it.skuCode === ord.skuCode) {
+          const take = Math.min(it.qty, remainingDeduct);
+          remainingDeduct -= take;
+          detachedSnap = { ...it, qty: take };
+          if (it.qty - take > 0) {
+            nextItems.push({ ...it, qty: it.qty - take });
+          }
+        } else {
+          nextItems.push(it);
+        }
+      }
+      const nextMin = nextItems.reduce((s, it) => s + it.standardMin * it.qty, 0);
+
+      await db.atomicUpdate<OrderPackageDoc>(
+        COLLECTIONS.ORDER_PACKAGES,
+        pkg._id,
+        (cur) => cur.orderIds.includes(ord._id),
+        (cur) => ({
+          ...cur,
+          orderIds: cur.orderIds.filter((id) => id !== ord._id),
+          externalOrderIds: cur.externalOrderIds.filter((id) => id !== extId),
+          itemsSnapshot: nextItems,
+          totalMin: nextMin,
+          version: cur.version + 1,
+          updatedAt: now,
+        }),
+      );
+
+      const splitPkgId = newPackageId();
+      const splitPkg: OrderPackageDoc = {
+        ...pkg,
+        _id: splitPkgId,
+        orderIds: [ord._id],
+        externalOrderIds: [extId],
+        itemsSnapshot: detachedSnap ? [detachedSnap] : [],
+        totalMin: detachedSnap ? detachedSnap.standardMin * detachedSnap.qty : 0,
+        status: isPreMake ? "cancelled_full" : "cancelled_made",
+        queueSeq: undefined,
+        stallPromptedAt: undefined,
+        version: 1,
+        updatedAt: now,
+      };
+      await db.insert(COLLECTIONS.ORDER_PACKAGES, splitPkg);
+      await db.put<ExternalOrderIndexDoc>(COLLECTIONS.EXTERNAL_ORDER_INDEX, {
+        ...idx,
+        packageId: splitPkgId,
+      });
+      await db.put<OrderDoc>(COLLECTIONS.ORDERS, { ...ord, status: "refunded", updatedAt: now });
+
+      if (isPreMake) {
+        cancelledPreMake++;
+      } else {
+        cancelledInMake++;
+        if (pkg.assignedWeaverId) {
+          await registerCancelledPackageToWeaverStock(db, splitPkg, now);
+        }
+      }
+      continue;
+    }
+
+    if (isPreMake) {
+      if (pkg.status === "offered" && pkg.attemptCount > 0) {
+        const offId = dispatchOfferId(pkg._id, pkg.attemptCount);
+        const off = await db.get<DispatchOfferDoc>(COLLECTIONS.DISPATCH_OFFERS, offId);
+        if (off && off.status === "pending") {
+          await transitionStatus(
+            db,
+            COLLECTIONS.DISPATCH_OFFERS,
+            off._id,
+            DISPATCH_OFFER_STATUS_SPEC,
+            "pending",
+            "cancelled",
+            off.version,
+            () => ({ respondedAt: now }),
+            now,
+          );
+        }
+      }
       const tr = await transitionStatus(
         db,
         COLLECTIONS.ORDER_PACKAGES,
@@ -184,26 +291,33 @@ export async function commitDouyinImport(
         pkg.status,
         "cancelled_full",
         pkg.version,
-        undefined,
+        () => ({ assignedWeaverId: undefined }),
         now,
       );
-      if (tr.moved) cancelledPreMake++;
-    } else if (pkg.status === "making") {
+      if (tr.moved) {
+        cancelledPreMake++;
+        if (ord) await db.put<OrderDoc>(COLLECTIONS.ORDERS, { ...ord, status: "refunded", updatedAt: now });
+      }
+    } else if (isUnshippedPostMake) {
+      const weaverId = pkg.assignedWeaverId;
       const tr = await transitionStatus(
         db,
         COLLECTIONS.ORDER_PACKAGES,
         pkg._id,
         ORDER_PACKAGE_STATUS_SPEC,
-        "making",
+        pkg.status,
         "cancelled_made",
         pkg.version,
-        undefined,
+        () => ({ queueSeq: undefined, stallPromptedAt: undefined }),
         now,
       );
-      if (tr.moved && pkg.assignedWeaverId) {
+      if (tr.moved) {
         cancelledInMake++;
-        // Register finished/in-progress core items into weaverStock for reuse
-        await registerCancelledPackageToWeaverStock(db, pkg, now);
+        if (ord) await db.put<OrderDoc>(COLLECTIONS.ORDERS, { ...ord, status: "refunded", updatedAt: now });
+        if (weaverId) {
+          await compactWeaverQueue(db, weaverId, now);
+          await registerCancelledPackageToWeaverStock(db, pkg, now);
+        }
       }
     }
   }
@@ -295,6 +409,7 @@ export async function commitDouyinImport(
     const itemMin = style.standardMin * r.qty;
     const snapItem: PackageItemSnapshot = {
       skuCode: style._id,
+      skuName: style.name,
       qty: r.qty,
       standardMin: style.standardMin,
       yarnBomSnapshot: style.yarnBom.map((b) => ({

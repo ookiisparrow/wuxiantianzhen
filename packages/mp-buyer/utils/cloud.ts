@@ -21,6 +21,13 @@ export async function callBuyerCloud<T = any>(
   return body.data as T;
 }
 
+export async function ensureBuyerLoggedIn(phone?: string, nickname?: string): Promise<any> {
+  return callBuyerCloud("auth.login", {
+    ...(phone ? { phone } : {}),
+    ...(nickname ? { nickname } : {}),
+  });
+}
+
 export function fenToYuanText(fen: number | undefined | null): string {
   const n = typeof fen === "number" && Number.isFinite(fen) ? fen : 0;
   return (n / 100).toFixed(2);

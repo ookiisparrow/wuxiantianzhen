@@ -22,7 +22,14 @@ export async function compactWeaverQueue(db: DbAdapter, weaverId: string, nowUtc
         COLLECTIONS.ORDER_PACKAGES,
         item._id,
         () => true,
-        (cur) => ({ ...cur, queueSeq: targetSeq, updatedAt: nowUtcMs }),
+        (cur) => ({
+          ...cur,
+          queueSeq: targetSeq,
+          // Reset progress clock when newly promoted to head (#1) so prior wait time never triggers a false stall
+          lastProgressAt: targetSeq === 1 ? nowUtcMs : cur.lastProgressAt,
+          stallPromptedAt: targetSeq === 1 ? undefined : cur.stallPromptedAt,
+          updatedAt: nowUtcMs,
+        }),
       );
     }
   }

@@ -15,7 +15,7 @@
         {
           "name": "dispatchTickEveryMinute",
           "type": "timer",
-          "config": "0 * * * * * *"
+          "config": "0 0 8-21 * * *"
         },
         {
           "name": "fiveMinWatchdog",

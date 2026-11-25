@@ -72,10 +72,23 @@ export function computeWeaverFreeMin(w: CapacityWeaverInput, opts: CapacityOptio
 export function estimateAvailableGrams(slot: YarnInventorySlot | undefined, unitWeightG: number): number {
   if (!slot || slot.status === "empty") return 0;
   if (unitWeightG <= 0) return 0;
-  const wholeG = Math.max(0, slot.wholeSkeins) * unitWeightG;
-  // Remaining grams in the currently opened skein (if any work has started or skeins > 0)
-  const partialG = slot.usedSinceCheckG > 0 ? Math.max(0, unitWeightG - slot.usedSinceCheckG) : 0;
-  return wholeG + partialG;
+  const totalG = Math.max(0, slot.wholeSkeins) * unitWeightG;
+  return Math.max(0, totalG - Math.max(0, slot.usedSinceCheckG));
+}
+
+function aggregateBomByYarn(
+  bomList: CapacityStyleInput["yarnBomConsumed"],
+): Array<{ yarnCode: string; consumedG: number; unitWeightG: number }> {
+  const byYarn = new Map<string, { consumedG: number; unitWeightG: number }>();
+  for (const bom of bomList) {
+    if (bom.consumedG <= 0) continue;
+    const prev = byYarn.get(bom.yarnCode);
+    byYarn.set(bom.yarnCode, {
+      consumedG: (prev?.consumedG ?? 0) + bom.consumedG,
+      unitWeightG: prev?.unitWeightG ?? bom.unitWeightG,
+    });
+  }
+  return [...byYarn.entries()].map(([yarnCode, v]) => ({ yarnCode, ...v }));
 }
 
 export function computeWeaverStyleUnits(
@@ -83,6 +96,7 @@ export function computeWeaverStyleUnits(
   style: CapacityStyleInput,
   freeMinOverride?: number,
   opts?: CapacityOptions,
+  availableGramsOverride?: ReadonlyMap<string, number>,
 ): { timeUnits: number; yarnUnits: number; units: number } {
   if (style.standardMin <= 0) return { timeUnits: 0, yarnUnits: 0, units: 0 };
   if (style.requiresEnrollment && (!w.certifiedStyleCodes || !w.certifiedStyleCodes.includes(style.skuCode))) {
@@ -93,10 +107,12 @@ export function computeWeaverStyleUnits(
   const timeUnits = Math.floor(freeMin / style.standardMin);
   if (timeUnits <= 0) return { timeUnits: 0, yarnUnits: 0, units: 0 };
 
+  const aggregatedBom = aggregateBomByYarn(style.yarnBomConsumed);
   let yarnUnits = Number.POSITIVE_INFINITY;
-  for (const bom of style.yarnBomConsumed) {
-    if (bom.consumedG <= 0) continue;
-    const availG = estimateAvailableGrams(w.yarnInventory[bom.yarnCode], bom.unitWeightG);
+  for (const bom of aggregatedBom) {
+    const availG =
+      availableGramsOverride?.get(bom.yarnCode) ??
+      estimateAvailableGrams(w.yarnInventory[bom.yarnCode], bom.unitWeightG);
     const possible = Math.floor(availG / bom.consumedG);
     if (possible < yarnUnits) yarnUnits = possible;
   }
@@ -109,7 +125,7 @@ export function computeWeaverStyleUnits(
 /**
  * Computes safe sellable quantities for one or multiple styles sharing the same weaver pool
  * (e.g., Douyin live broadcast with split ratios like 70% Style A + 30% Style B),
- * guaranteeing the same weaver's free minutes are NEVER double-sold across styles.
+ * guaranteeing neither a weaver's free minutes NOR her shared yarn inventory is double-sold across styles.
  */
 export function computeSafeLiveStockPlan(
   weavers: readonly CapacityWeaverInput[],
@@ -131,10 +147,27 @@ export function computeSafeLiveStockPlan(
     for (const w of weavers) {
       const totalFree = computeWeaverFreeMin(w, opts);
       if (totalFree <= 0) continue;
+
+      // Track remaining grams per yarn color across styles for this weaver so shared colors aren't double-sold
+      const remGrams = new Map<string, number>();
+      for (const alloc of allocations) {
+        for (const bom of alloc.style.yarnBomConsumed) {
+          if (!remGrams.has(bom.yarnCode)) {
+            remGrams.set(bom.yarnCode, estimateAvailableGrams(w.yarnInventory[bom.yarnCode], bom.unitWeightG));
+          }
+        }
+      }
+
       for (const alloc of allocations) {
         const sliceMin = Math.floor((totalFree * Math.max(0, alloc.shareWeight)) / totalWeight);
-        const { units } = computeWeaverStyleUnits(w, alloc.style, sliceMin);
-        rawUnitsBySku[alloc.style.skuCode] = (rawUnitsBySku[alloc.style.skuCode] ?? 0) + units;
+        const { units } = computeWeaverStyleUnits(w, alloc.style, sliceMin, undefined, remGrams);
+        if (units > 0) {
+          for (const bom of aggregateBomByYarn(alloc.style.yarnBomConsumed)) {
+            const curG = remGrams.get(bom.yarnCode) ?? 0;
+            remGrams.set(bom.yarnCode, Math.max(0, curG - units * bom.consumedG));
+          }
+          rawUnitsBySku[alloc.style.skuCode] = (rawUnitsBySku[alloc.style.skuCode] ?? 0) + units;
+        }
       }
     }
   }

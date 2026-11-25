@@ -2,13 +2,19 @@ import {
   AppError,
   COLLECTIONS,
   ERROR_CODES,
+  PHOTO_REVIEW_STATUS_SPEC,
   asFen,
   computeSafeLiveStockPlan,
+  type AddressDoc,
+  type DepositChannel,
   type OrderPackageDoc,
+  type PaymentDoc,
   type PhotoReviewDoc,
   type ProductDoc,
   type RecruitFunnelDoc,
+  type RegionCode,
   type StyleDoc,
+  type StyleEnrollmentDoc,
   type UserDoc,
   type WeaverAccountDoc,
   type WeaverStockDoc,
@@ -17,9 +23,10 @@ import {
 } from "@wxtz/shared";
 import { loginOrMergeUser, type MiniProgramApp } from "../kit/auth.ts";
 import type { DbAdapter } from "../kit/db.ts";
-import { weaverAccountId } from "../kit/ids.ts";
+import { newUserId, paymentId, recruitFunnelId, weaverAccountId } from "../kit/ids.ts";
 import { reconcileWeaverAccount } from "../kit/ledger.ts";
 import { releaseExpiredReservations } from "../kit/stockLock.ts";
+import { transitionStatus } from "../kit/transition.ts";
 import { confirmWeaverSkeinCheck } from "../kit/yarnInventory.ts";
 import type { ExternalPorts } from "../ports/index.ts";
 import {
@@ -55,6 +62,7 @@ import {
   submitFunnelEntryStep1,
 } from "../services/funnel.ts";
 import {
+  cancelWeeklyYarnClaim,
   confirmSettlementBatchPaid,
   confirmYarnClaimReceived,
   createSettlementBatchAndExportBankCsv,
@@ -68,6 +76,8 @@ export interface CloudRequestContext {
   ports: ExternalPorts;
   app?: MiniProgramApp;
   openid?: string;
+  unionid?: string;
+  invocationSource?: "mp_client" | "timer" | "http_gateway" | "internal";
   adminJwtSecret: string;
   adminToken?: string;
   nowUtcMs?: number;
@@ -77,9 +87,15 @@ export type ApiResponse<T = unknown> =
   | { ok: true; data: T }
   | { ok: false; code: string; message: string; details?: Record<string, unknown> };
 
-async function requireMiniProgramUser(ctx: CloudRequestContext): Promise<UserDoc> {
+const DEFAULT_SELF_SHIP_REIMB_FEN = asFen(500); // ¥5.00 standard township station first-weight subsidy
+const DEFAULT_YARN_SHIP_FEE_FEN = asFen(250); // ¥2.50 weekly JZH yarn shipping fee
+
+async function requireMiniProgramUser(ctx: CloudRequestContext, expectedApp?: MiniProgramApp): Promise<UserDoc> {
   if (!ctx.openid || !ctx.app) {
     throw new AppError(ERROR_CODES.FORBIDDEN, "请在微信小程序内打开");
+  }
+  if (expectedApp && ctx.app !== expectedApp) {
+    throw new AppError(ERROR_CODES.FORBIDDEN, "当前小程序端无权调用该接口");
   }
   const field = ctx.app === "mp-buyer" ? "buyerOpenid" : "weaverOpenid";
   const found = await ctx.db.find<UserDoc>(COLLECTIONS.USERS, (u) => u[field] === ctx.openid);
@@ -89,8 +105,56 @@ async function requireMiniProgramUser(ctx: CloudRequestContext): Promise<UserDoc
   return found[0];
 }
 
+function assertNotMiniProgramClient(ctx: CloudRequestContext): void {
+  if (ctx.invocationSource === "mp_client" || Boolean(ctx.openid)) {
+    throw new AppError(ERROR_CODES.FORBIDDEN, "内部回调与定时任务禁止小程序客户端直接调用");
+  }
+}
+
+async function getServerRecruitRegions(db: DbAdapter): Promise<readonly RegionCode[]> {
+  const cfg = await db.get<{ _id: string; activeRecruitRegions?: RegionCode[] }>(
+    COLLECTIONS.SYSTEM_CONFIG,
+    "recruit",
+  );
+  return cfg?.activeRecruitRegions && cfg.activeRecruitRegions.length > 0 ? cfg.activeRecruitRegions : ["jzh"];
+}
+
+async function upsertUserAddress(
+  db: DbAdapter,
+  params: {
+    ownerUserId: string;
+    type: AddressDoc["type"];
+    payload: Record<string, any>;
+    nowUtcMs: number;
+  },
+): Promise<AddressDoc> {
+  const addrId = params.payload.addressId
+    ? String(params.payload.addressId)
+    : `addr_${newUserId().slice(4)}`;
+  const existing = await db.get<AddressDoc>(COLLECTIONS.ADDRESSES, addrId);
+  if (existing && existing.ownerUserId !== params.ownerUserId) {
+    throw new AppError(ERROR_CODES.FORBIDDEN, "无权修改他人地址");
+  }
+  const doc: AddressDoc = {
+    _id: addrId,
+    ownerUserId: params.ownerUserId,
+    type: params.type,
+    contactName: String(params.payload.contactName ?? "默认收件人").trim(),
+    contactPhone: String(params.payload.contactPhone ?? "13800000000").trim(),
+    province: String(params.payload.province ?? "浙江省").trim(),
+    city: String(params.payload.city ?? "杭州市").trim(),
+    district: String(params.payload.district ?? "西湖区").trim(),
+    detail: String(params.payload.detail ?? "默认详细地址").trim(),
+    isDefault: Boolean(params.payload.isDefault ?? true),
+    createdAt: existing?.createdAt ?? params.nowUtcMs,
+    updatedAt: params.nowUtcMs,
+  };
+  await db.put(COLLECTIONS.ADDRESSES, doc);
+  return doc;
+}
+
 /**
- * Unified CloudBase entrypoint router dispatching actions across all 8 domains
+ * Unified CloudBase entrypoint router dispatching actions across all domains
  * (`auth.*`, `weaver.*`, `volunteer.*`, `buyer.*`, `admin.*`, `webhook.*`, `cron.*`).
  */
 export async function dispatchCloudAction(
@@ -110,8 +174,10 @@ export async function dispatchCloudAction(
           app: ctx.app,
           openid: ctx.openid,
           phone: payload.phone,
-          unionid: payload.unionid,
+          // Never trust client-supplied unionid; only accept server-verified ctx.unionid
+          unionid: ctx.unionid,
           nickname: payload.nickname,
+          allowOpenidRebind: false,
           nowUtcMs: now,
         });
         return { ok: true, data: res };
@@ -119,7 +185,7 @@ export async function dispatchCloudAction(
 
       // ---------------- WEAVER (mp-weaver) ----------------
       case "weaver.dashboard": {
-        const u = await requireMiniProgramUser(ctx);
+        const u = await requireMiniProgramUser(ctx, "mp-weaver");
         const [account, packages, yarnClaims] = await Promise.all([
           ctx.db.get<WeaverAccountDoc>(COLLECTIONS.WEAVER_ACCOUNTS, weaverAccountId(u._id)),
           ctx.db.find<OrderPackageDoc>(
@@ -133,8 +199,26 @@ export async function dispatchCloudAction(
         packages.sort((a, b) => (a.queueSeq ?? 999) - (b.queueSeq ?? 999));
         return { ok: true, data: { user: u, account, packages, yarnClaims } };
       }
+      case "weaver.saveAddress": {
+        const u = await requireMiniProgramUser(ctx, "mp-weaver");
+        const addr = await upsertUserAddress(ctx.db, {
+          ownerUserId: u._id,
+          type: "weaver_send",
+          payload,
+          nowUtcMs: now,
+        });
+        if (addr.isDefault) {
+          await ctx.db.atomicUpdate<UserDoc>(
+            COLLECTIONS.USERS,
+            u._id,
+            () => true,
+            (cur) => ({ ...cur, defaultSendAddrId: addr._id, updatedAt: now }),
+          );
+        }
+        return { ok: true, data: addr };
+      }
       case "weaver.respondOffer": {
-        const u = await requireMiniProgramUser(ctx);
+        const u = await requireMiniProgramUser(ctx, "mp-weaver");
         const res = await respondDispatchOffer(ctx.db, {
           packageId: String(payload.packageId),
           weaverId: u._id,
@@ -144,16 +228,17 @@ export async function dispatchCloudAction(
         return { ok: true, data: res };
       }
       case "weaver.getHeadPattern": {
-        const u = await requireMiniProgramUser(ctx);
+        const u = await requireMiniProgramUser(ctx, "mp-weaver");
         const res = await getHeadPatternForWeaver(ctx.db, {
           packageId: String(payload.packageId),
           weaverId: u._id,
+          skuCode: payload.skuCode ? String(payload.skuCode) : undefined,
           nowUtcMs: now,
         });
         return { ok: true, data: res };
       }
       case "weaver.releaseOrder": {
-        const u = await requireMiniProgramUser(ctx);
+        const u = await requireMiniProgramUser(ctx, "mp-weaver");
         const res = await releaseMakingOrderVoluntarily(ctx.db, {
           packageId: String(payload.packageId),
           weaverId: u._id,
@@ -162,9 +247,12 @@ export async function dispatchCloudAction(
         return { ok: true, data: res };
       }
       case "weaver.submitFinishedWork": {
-        const u = await requireMiniProgramUser(ctx);
-        // Trigger mandatory WeChat UGC image security check via hexagonal port!
-        for (const fid of Object.values(payload.photoSlots ?? {}) as string[]) {
+        const u = await requireMiniProgramUser(ctx, "mp-weaver");
+        const mediaIds = [
+          ...(Object.values(payload.photoSlots ?? {}) as string[]),
+          ...(payload.sealedPhotoFileId ? [String(payload.sealedPhotoFileId)] : []),
+        ];
+        for (const fid of mediaIds) {
           if (fid) {
             await ctx.ports.contentSec.submitImageCheckAsync({
               openid: ctx.openid ?? "",
@@ -173,6 +261,7 @@ export async function dispatchCloudAction(
             });
           }
         }
+        const trackingNo = payload.selfDropoffTrackingNo ? String(payload.selfDropoffTrackingNo).trim() : undefined;
         const res = await submitFinishedWork(ctx.db, {
           packageId: String(payload.packageId),
           weaverId: u._id,
@@ -181,28 +270,42 @@ export async function dispatchCloudAction(
           bagStickerCode: payload.bagStickerCode,
           sealedPhotoFileId: payload.sealedPhotoFileId,
           pickupWindow: payload.pickupWindow,
+          selfDropoffTrackingNo: trackingNo,
+          standardSelfShipReimbFen:
+            u.shippingMode === "self_dropoff" && trackingNo ? DEFAULT_SELF_SHIP_REIMB_FEN : undefined,
           nowUtcMs: now,
         });
         return { ok: true, data: res };
       }
       case "weaver.sealAndSubmit": {
-        const u = await requireMiniProgramUser(ctx);
+        const u = await requireMiniProgramUser(ctx, "mp-weaver");
+        const sealedFileId = String(payload.sealedPhotoFileId);
+        if (sealedFileId) {
+          await ctx.ports.contentSec.submitImageCheckAsync({
+            openid: ctx.openid ?? "",
+            mediaUrl: sealedFileId,
+            scene: 2,
+          });
+        }
+        const trackingNo = payload.selfDropoffTrackingNo ? String(payload.selfDropoffTrackingNo).trim() : undefined;
+        // Standard self-ship subsidy is strictly determined server-side — never trust client Fen!
+        const serverReimbFen =
+          u.shippingMode === "self_dropoff" && trackingNo ? DEFAULT_SELF_SHIP_REIMB_FEN : undefined;
+
         const res = await sealAndSubmitShipment(ctx.db, {
           packageId: String(payload.packageId),
           weaverId: u._id,
           bagStickerCode: String(payload.bagStickerCode),
-          sealedPhotoFileId: String(payload.sealedPhotoFileId),
+          sealedPhotoFileId: sealedFileId,
           pickupWindow: payload.pickupWindow,
-          selfDropoffTrackingNo: payload.selfDropoffTrackingNo,
-          standardSelfShipReimbFen: payload.standardSelfShipReimbFen
-            ? asFen(Number(payload.standardSelfShipReimbFen))
-            : undefined,
+          selfDropoffTrackingNo: trackingNo,
+          standardSelfShipReimbFen: serverReimbFen,
           nowUtcMs: now,
         });
         return { ok: true, data: res };
       }
       case "weaver.confirmSkeinCheck": {
-        const u = await requireMiniProgramUser(ctx);
+        const u = await requireMiniProgramUser(ctx, "mp-weaver");
         const res = await confirmWeaverSkeinCheck(
           ctx.db,
           u._id,
@@ -215,18 +318,27 @@ export async function dispatchCloudAction(
         return { ok: true, data: res };
       }
       case "weaver.submitYarnClaim": {
-        const u = await requireMiniProgramUser(ctx);
+        const u = await requireMiniProgramUser(ctx, "mp-weaver");
         const res = await submitWeeklyYarnClaim(ctx.db, {
           weaverId: u._id,
           sendAddrId: String(payload.sendAddrId),
           items: payload.items ?? [],
-          shippingFeeFen: asFen(Number(payload.shippingFeeFen ?? 250)),
+          shippingFeeFen: DEFAULT_YARN_SHIP_FEE_FEN,
+          nowUtcMs: now,
+        });
+        return { ok: true, data: res };
+      }
+      case "weaver.cancelYarnClaim": {
+        const u = await requireMiniProgramUser(ctx, "mp-weaver");
+        const res = await cancelWeeklyYarnClaim(ctx.db, {
+          claimId: String(payload.claimId),
+          weaverId: u._id,
           nowUtcMs: now,
         });
         return { ok: true, data: res };
       }
       case "weaver.confirmYarnReceived": {
-        const u = await requireMiniProgramUser(ctx);
+        const u = await requireMiniProgramUser(ctx, "mp-weaver");
         const res = await confirmYarnClaimReceived(ctx.db, {
           claimId: String(payload.claimId),
           weaverId: u._id,
@@ -236,23 +348,37 @@ export async function dispatchCloudAction(
         return { ok: true, data: { yarnInventory: res.yarnInventory } };
       }
       case "weaver.funnelStep1": {
-        const u = await requireMiniProgramUser(ctx);
+        const u = await requireMiniProgramUser(ctx, "mp-weaver");
+        const photoIds: string[] = Array.isArray(payload.portfolioPhotoFileIds)
+          ? payload.portfolioPhotoFileIds.map(String)
+          : [];
+        for (const fid of photoIds) {
+          if (fid) {
+            await ctx.ports.contentSec.submitImageCheckAsync({
+              openid: ctx.openid ?? "",
+              mediaUrl: fid,
+              scene: 2,
+            });
+          }
+        }
+        const activeRegions = await getServerRecruitRegions(ctx.db);
         const res = await submitFunnelEntryStep1(ctx.db, {
           userId: u._id,
           province: String(payload.province),
           city: String(payload.city),
-          activeRecruitRegions: payload.activeRecruitRegions ?? ["jzh"],
+          activeRecruitRegions: activeRegions,
           quizCorrectCount: Number(payload.quizCorrectCount),
-          portfolioPhotoFileIds: payload.portfolioPhotoFileIds ?? [],
+          portfolioPhotoFileIds: photoIds,
           nowUtcMs: now,
         });
         return { ok: true, data: res };
       }
       case "weaver.funnelAckDeposit": {
-        const u = await requireMiniProgramUser(ctx);
+        const u = await requireMiniProgramUser(ctx, "mp-weaver");
         const res = await passPortfolioAndUnlockExamSample(ctx.db, {
           userId: u._id,
           ackDepositNotice: Boolean(payload.ackDepositNotice),
+          requireApprovedPortfolio: true,
           nowUtcMs: now,
         });
         return { ok: true, data: res };
@@ -260,7 +386,7 @@ export async function dispatchCloudAction(
 
       // ---------------- VOLUNTEER (mp-buyer role entry) ----------------
       case "volunteer.passExam": {
-        const u = await requireMiniProgramUser(ctx);
+        const u = await requireMiniProgramUser(ctx, "mp-buyer");
         const res = await activateFanVolunteerAfterExam(ctx.db, {
           userId: u._id,
           correctCount: Number(payload.correctCount),
@@ -269,12 +395,12 @@ export async function dispatchCloudAction(
         return { ok: true, data: res };
       }
       case "volunteer.getCard": {
-        const u = await requireMiniProgramUser(ctx);
+        const u = await requireMiniProgramUser(ctx, "mp-buyer");
         const card = await getBlindReviewCardForVolunteer(ctx.db, String(payload.reviewId), u._id);
         return { ok: true, data: card };
       }
       case "volunteer.vote": {
-        const u = await requireMiniProgramUser(ctx);
+        const u = await requireMiniProgramUser(ctx, "mp-buyer");
         const res = await castVolunteerVote(ctx.db, {
           reviewId: String(payload.reviewId),
           volunteerUserId: u._id,
@@ -289,21 +415,44 @@ export async function dispatchCloudAction(
       // ---------------- BUYER (mp-buyer) ----------------
       case "buyer.listCatalog": {
         const [products, stocks] = await Promise.all([
-          ctx.db.find<ProductDoc>(COLLECTIONS.PRODUCTS, (p) => p.status === "on_sale"),
+          ctx.db.find<ProductDoc>(COLLECTIONS.PRODUCTS, (p) => p.isOnSale === true),
           ctx.db.find<WeaverStockDoc>(COLLECTIONS.WEAVER_STOCK, (s) => s.availableQty > 0),
         ]);
+        products.sort((a, b) => a.sortOrder - b.sortOrder);
         const readyStockBySku: Record<string, number> = {};
         for (const s of stocks) {
           readyStockBySku[s.skuCode] = (readyStockBySku[s.skuCode] ?? 0) + s.availableQty;
         }
         return { ok: true, data: { products, readyStockBySku } };
       }
+      case "buyer.saveAddress": {
+        const u = await requireMiniProgramUser(ctx, "mp-buyer");
+        const addr = await upsertUserAddress(ctx.db, {
+          ownerUserId: u._id,
+          type: "buyer_recv",
+          payload,
+          nowUtcMs: now,
+        });
+        return { ok: true, data: addr };
+      }
       case "buyer.payWeaverDeposit": {
-        const u = await requireMiniProgramUser(ctx);
+        const u = await requireMiniProgramUser(ctx, "mp-buyer");
         const depositAmountFen = asFen(20000); // 200.00 RMB cooperative performance deposit (LIAB_WEAVER_DEPOSIT)
+        const mchId = String(payload.mchId ?? "MCH_DEFAULT");
         const outTradeNo = `DEP_${u._id}_${now}`;
+        const payDoc: PaymentDoc = {
+          _id: paymentId(outTradeNo),
+          orderId: outTradeNo,
+          buyerUserId: u._id,
+          mchId,
+          outTradeNo,
+          amountFen: depositAmountFen,
+          status: "init",
+        };
+        await ctx.db.insert(COLLECTIONS.PAYMENTS, payDoc);
+
         const prepay = await ctx.ports.payment.createJsapiPrepay({
-          mchId: String(payload.mchId ?? "MCH_DEFAULT"),
+          mchId,
           outTradeNo,
           buyerOpenid: ctx.openid!,
           amountFen: depositAmountFen,
@@ -312,7 +461,7 @@ export async function dispatchCloudAction(
         return { ok: true, data: { userId: u._id, outTradeNo, amountFen: depositAmountFen, prepay } };
       }
       case "buyer.checkSellability": {
-        const u = ctx.openid && ctx.app ? await requireMiniProgramUser(ctx).catch(() => null) : null;
+        const u = ctx.openid && ctx.app ? await requireMiniProgramUser(ctx, "mp-buyer").catch(() => null) : null;
         const res = await checkProductSellability(ctx.db, {
           productId: String(payload.productId),
           buyerUserId: u?._id,
@@ -322,7 +471,7 @@ export async function dispatchCloudAction(
         return { ok: true, data: res };
       }
       case "buyer.createOrder": {
-        const u = await requireMiniProgramUser(ctx);
+        const u = await requireMiniProgramUser(ctx, "mp-buyer");
         const res = await createMpBuyerOrder(ctx.db, {
           buyerUserId: u._id,
           productId: String(payload.productId),
@@ -342,12 +491,13 @@ export async function dispatchCloudAction(
         return { ok: true, data: { ...res, prepay } };
       }
       case "buyer.requestRefund": {
-        const u = await requireMiniProgramUser(ctx);
+        const u = await requireMiniProgramUser(ctx, "mp-buyer");
         const res = await requestMpBuyerRefund(ctx.db, {
           orderId: String(payload.orderId),
           buyerUserId: u._id,
           reason: String(payload.reason ?? ""),
           trigger: payload.trigger,
+          paymentPort: ctx.ports.payment,
           nowUtcMs: now,
         });
         return { ok: true, data: res };
@@ -356,23 +506,41 @@ export async function dispatchCloudAction(
       // ---------------- ADMIN (Web Console, JWT Protected) ----------------
       case "admin.liveSafeStockPlan": {
         verifyAdminJwt(ctx.adminToken, ctx.adminJwtSecret, now);
-        const styles = await ctx.db.find<StyleDoc>(COLLECTIONS.STYLES, (s) => s.status === "active");
-        const yarns = await ctx.db.find<YarnCatalogDoc>(COLLECTIONS.YARN_CATALOG, () => true);
+        const [styles, yarns, liveWeavers, activePkgs, stocks, enrollments] = await Promise.all([
+          ctx.db.find<StyleDoc>(COLLECTIONS.STYLES, (s) => s.status === "active"),
+          ctx.db.find<YarnCatalogDoc>(COLLECTIONS.YARN_CATALOG, () => true),
+          ctx.db.find<UserDoc>(
+            COLLECTIONS.USERS,
+            (u) => u.pool === "live" && u.funnelStage === "approved" && u.acceptingOrders,
+          ),
+          ctx.db.find<OrderPackageDoc>(COLLECTIONS.ORDER_PACKAGES, (p) =>
+            ["confirming", "waiting_dispatch", "offered", "making", "photo_review"].includes(p.status),
+          ),
+          ctx.db.find<WeaverStockDoc>(COLLECTIONS.WEAVER_STOCK, (s) => s.availableQty > 0),
+          ctx.db.find<StyleEnrollmentDoc>(COLLECTIONS.STYLE_ENROLLMENTS, (e) => e.status === "certified"),
+        ]);
+
         const yarnWeight = new Map(yarns.map((y) => [y._id, y.unitWeightG || 50]));
-        const liveWeavers = await ctx.db.find<UserDoc>(
-          COLLECTIONS.USERS,
-          (u) => u.pool === "live" && u.funnelStage === "approved" && u.acceptingOrders,
-        );
-        const activePkgs = await ctx.db.find<OrderPackageDoc>(COLLECTIONS.ORDER_PACKAGES, (p) =>
-          ["offered", "making", "photo_review"].includes(p.status),
-        );
+        const certifiedByWeaver = new Map<string, string[]>();
+        for (const e of enrollments) {
+          const list = certifiedByWeaver.get(e.weaverId) ?? [];
+          list.push(e.skuCode);
+          certifiedByWeaver.set(e.weaverId, list);
+        }
+
         const backlogMap = new Map<string, number>();
+        const stalledWeavers = new Set<string>();
         for (const p of activePkgs) {
           if (p.assignedWeaverId) {
-            backlogMap.set(p.assignedWeaverId, (backlogMap.get(p.assignedWeaverId) ?? 0) + p.totalMin);
+            if (!p.isReadyStockReuse) {
+              backlogMap.set(p.assignedWeaverId, (backlogMap.get(p.assignedWeaverId) ?? 0) + p.totalMin);
+            }
+            if (p.status === "making" && p.queueSeq === 1 && p.stallPromptedAt) {
+              stalledWeavers.add(p.assignedWeaverId);
+            }
           }
         }
-        const stocks = await ctx.db.find<WeaverStockDoc>(COLLECTIONS.WEAVER_STOCK, (s) => s.availableQty > 0);
+
         const stockBySku = new Map<string, number>();
         for (const s of stocks) {
           stockBySku.set(s.skuCode, (stockBySku.get(s.skuCode) ?? 0) + s.availableQty);
@@ -388,7 +556,9 @@ export async function dispatchCloudAction(
             dailyCapacityMin: w.dailyCapacityMin,
             speedFactor: w.speedFactor,
             backlogMin: backlogMap.get(w._id) ?? 0,
+            isStalledHead: stalledWeavers.has(w._id),
             yarnInventory: w.yarnInventory,
+            certifiedStyleCodes: certifiedByWeaver.get(w._id) ?? [],
           })),
           styles.map((st) => ({
             style: {
@@ -479,18 +649,46 @@ export async function dispatchCloudAction(
           refundId: String(payload.refundId),
           adminUserId: adm.sub,
           approve: Boolean(payload.approve),
+          paymentPort: ctx.ports.payment,
           nowUtcMs: now,
         });
         return { ok: true, data: res };
       }
+      case "admin.funnelPassPortfolio": {
+        const adm = verifyAdminJwt(ctx.adminToken, ctx.adminJwtSecret, now);
+        const fId = recruitFunnelId(String(payload.userId));
+        const reviews = await ctx.db.find<PhotoReviewDoc>(
+          COLLECTIONS.PHOTO_REVIEWS,
+          (r) => r.scene === "funnel_portfolio" && r.targetId === fId && r.status !== "approved",
+        );
+        for (const rev of reviews) {
+          if (rev.status === "pending" || rev.status === "needs_admin") {
+            await transitionStatus(
+              ctx.db,
+              COLLECTIONS.PHOTO_REVIEWS,
+              rev._id,
+              PHOTO_REVIEW_STATUS_SPEC,
+              rev.status,
+              "approved",
+              rev.version,
+              () => ({ finalDecisionBy: adm.sub, decidedAt: now }),
+              now,
+            );
+          }
+        }
+        return { ok: true, data: { approvedCount: reviews.length } };
+      }
       case "admin.funnelApproveDeposit": {
         const adm = verifyAdminJwt(ctx.adminToken, ctx.adminJwtSecret, now);
+        const rawChannel = String(payload.depositChannel ?? "mp_buyer_cashier");
+        const channel: DepositChannel =
+          rawChannel === "manual_transfer_verify" ? "manual_transfer_verify" : "mp_buyer_cashier";
         const res = await completeDepositAndApproveWeaver(ctx.db, {
           userId: String(payload.userId),
           weaverNo: String(payload.weaverNo),
           dailyCapacityMin: Number(payload.dailyCapacityMin ?? 240),
           base12Codes: payload.base12Codes ?? [],
-          depositChannel: payload.depositChannel ?? "mp_buyer_cashier",
+          depositChannel: channel,
           depositRefId: String(payload.depositRefId),
           nowUtcMs: now,
         });
@@ -581,6 +779,7 @@ export async function dispatchCloudAction(
 
       // ---------------- WEBHOOKS ----------------
       case "webhook.wxpay": {
+        assertNotMiniProgramClient(ctx);
         const res = await handleWxPaySuccessWebhook(ctx.db, {
           orderId: String(payload.orderId),
           wxTransactionId: String(payload.wxTransactionId),
@@ -591,10 +790,12 @@ export async function dispatchCloudAction(
 
       // ---------------- CRON ----------------
       case "cron.dispatchTick": {
+        assertNotMiniProgramClient(ctx);
         const res = await dispatchPoolTick(ctx.db, { nowUtcMs: now });
         return { ok: true, data: res };
       }
       case "cron.fiveMinuteWatchdog": {
+        assertNotMiniProgramClient(ctx);
         const [offers, stock, sla] = await Promise.all([
           sweepOffersAndStalledPackages(ctx.db, now),
           releaseExpiredReservations(ctx.db, now),
@@ -603,6 +804,7 @@ export async function dispatchCloudAction(
         return { ok: true, data: { offers, stock, sla } };
       }
       case "cron.dailySettleAndReconcile": {
+        assertNotMiniProgramClient(ctx);
         const settle = await sweepSettleEligiblePackages(ctx.db, now);
         const weavers = await ctx.db.find<UserDoc>(COLLECTIONS.USERS, (u) => u.roles.includes("weaver"));
         const mismatches: string[] = [];
@@ -625,5 +827,4 @@ export async function dispatchCloudAction(
   }
 }
 
-// Re-export ProductDoc reference so unused-import lint stays clean
 export type { ProductDoc };

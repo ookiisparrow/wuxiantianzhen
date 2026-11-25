@@ -7,10 +7,13 @@ import {
   addFen,
   asNonNegativeFen,
   asPositiveFen,
+  DISPATCH_OFFER_STATUS_SPEC,
   ORDER_PACKAGE_STATUS_SPEC,
   REFUND_STATUS_SPEC,
   LEDGER_ACCOUNT_CODES,
+  computeWeaverFreeMin,
   computeWeaverStyleUnits,
+  type DispatchOfferDoc,
   type Fen,
   type AddressDoc,
   type OrderDoc,
@@ -18,13 +21,16 @@ import {
   type PaymentDoc,
   type ProductDoc,
   type RefundDoc,
+  type ShipmentDoc,
   type StyleDoc,
+  type StyleEnrollmentDoc,
   type UserDoc,
   type WeaverStockDoc,
   type YarnCatalogDoc,
 } from "@wxtz/shared";
 import type { DbAdapter } from "../kit/db.ts";
 import {
+  dispatchOfferId,
   ledgerKeyLossComp,
   ledgerKeyPay,
   ledgerKeyQualityRefund,
@@ -32,16 +38,24 @@ import {
   newPackageId,
   paymentId,
   refundId,
+  shipmentId,
 } from "../kit/ids.ts";
-import { accrueSettledPackage, postLedgerEntry } from "../kit/ledger.ts";
-import { registerCancelledPackageToWeaverStock, reserveReadyStock } from "../kit/stockLock.ts";
+import { accrueSettledPackage, postLedgerEntry, recordWeaverDeposit } from "../kit/ledger.ts";
+import { compactWeaverQueue } from "../kit/queue.ts";
+import {
+  commitPaidStockReservation,
+  registerCancelledPackageToWeaverStock,
+  releaseStockReservationForOrderOrPackage,
+  reserveReadyStock,
+} from "../kit/stockLock.ts";
 import { transitionStatus } from "../kit/transition.ts";
+import type { PaymentPort } from "../ports/index.ts";
 
 /**
  * Checks real-time sellability of a product on `mp-buyer` (docs/07 §4.3):
- *  - `ready_stock`: checks `sum(availableQty) >= qty`;
- *  - `made_to_order`: checks whether at least 1 eligible weaver in `mp` (or overflow `live`)
- *    has `units >= qty` within the 3-day horizon (excluding buyer herself!).
+ *  - `ready_stock`: checks that a single non-buyer weaver holds `availableQty >= qty`;
+ *  - `made_to_order`: checks `styleEnrollments`, excludes stalled weavers, subtracts unassigned
+ *    `waiting_dispatch`/`confirming` backlog, and verifies at least 1 eligible weaver can make `qty`.
  */
 export async function checkProductSellability(
   db: DbAdapter,
@@ -55,6 +69,10 @@ export async function checkProductSellability(
 ): Promise<{ sellable: boolean; availableReadyUnits: number; reason?: "temporarily_sold_out" | "off_sale" }> {
   const now = params.nowUtcMs ?? Date.now();
   const qty = params.qty ?? 1;
+  if (!Number.isInteger(qty) || qty <= 0) {
+    throw new AppError(ERROR_CODES.VALIDATION_ERROR, "购买数量须为正整数");
+  }
+
   const prod = await db.get<ProductDoc>(COLLECTIONS.PRODUCTS, params.productId);
   if (!prod || !prod.isOnSale) {
     return { sellable: false, availableReadyUnits: 0, reason: "off_sale" };
@@ -65,15 +83,16 @@ export async function checkProductSellability(
     (s) => s.skuCode === prod.skuCode && s.availableQty > 0 && s.weaverId !== params.buyerUserId,
   );
   const availableReadyUnits = stocks.reduce((sum, s) => sum + s.availableQty, 0);
+  const maxSingleWeaverReady = stocks.reduce((m, s) => Math.max(m, s.availableQty), 0);
 
   if (prod.saleType === "ready_stock") {
-    return availableReadyUnits >= qty
+    return maxSingleWeaverReady >= qty
       ? { sellable: true, availableReadyUnits }
       : { sellable: false, availableReadyUnits, reason: "temporarily_sold_out" };
   }
 
-  // Made-to-order: if ready stock already covers it, immediately sellable!
-  if (availableReadyUnits >= qty) {
+  // Made-to-order: if a single weaver's ready stock already covers `qty`, immediately sellable!
+  if (maxSingleWeaverReady >= qty) {
     return { sellable: true, availableReadyUnits };
   }
 
@@ -82,38 +101,67 @@ export async function checkProductSellability(
     return { sellable: false, availableReadyUnits, reason: "off_sale" };
   }
 
-  const weavers = await db.find<UserDoc>(
-    COLLECTIONS.USERS,
-    (u) =>
-      u.roles.includes("weaver") &&
-      u.funnelStage === "approved" &&
-      u.acceptingOrders &&
-      u._id !== params.buyerUserId,
-  );
-  const activePkgs = await db.find<OrderPackageDoc>(COLLECTIONS.ORDER_PACKAGES, (p) =>
-    ["offered", "making", "photo_review"].includes(p.status),
-  );
+  const [weavers, inFlightPkgs, yarns, enrollments] = await Promise.all([
+    db.find<UserDoc>(
+      COLLECTIONS.USERS,
+      (u) =>
+        u.roles.includes("weaver") &&
+        u.funnelStage === "approved" &&
+        u.acceptingOrders &&
+        u._id !== params.buyerUserId,
+    ),
+    db.find<OrderPackageDoc>(COLLECTIONS.ORDER_PACKAGES, (p) =>
+      ["confirming", "waiting_dispatch", "offered", "making", "photo_review"].includes(p.status),
+    ),
+    db.find<YarnCatalogDoc>(COLLECTIONS.YARN_CATALOG, () => true),
+    db.find<StyleEnrollmentDoc>(COLLECTIONS.STYLE_ENROLLMENTS, (e) => e.status === "certified"),
+  ]);
+
+  const certifiedByWeaver = new Map<string, string[]>();
+  for (const e of enrollments) {
+    const list = certifiedByWeaver.get(e.weaverId) ?? [];
+    list.push(e.skuCode);
+    certifiedByWeaver.set(e.weaverId, list);
+  }
+
   const backlogMap = new Map<string, number>();
-  for (const p of activePkgs) {
+  const stalledWeavers = new Set<string>();
+  let unassignedWaitingMin = 0;
+
+  for (const p of inFlightPkgs) {
     if (p.assignedWeaverId) {
-      backlogMap.set(p.assignedWeaverId, (backlogMap.get(p.assignedWeaverId) ?? 0) + p.totalMin);
+      if (!p.isReadyStockReuse) {
+        backlogMap.set(p.assignedWeaverId, (backlogMap.get(p.assignedWeaverId) ?? 0) + p.totalMin);
+      }
+      if (p.status === "making" && p.queueSeq === 1 && p.stallPromptedAt) {
+        stalledWeavers.add(p.assignedWeaverId);
+      }
+    } else if ((p.status === "waiting_dispatch" || p.status === "confirming") && !p.isReadyStockReuse) {
+      unassignedWaitingMin += p.totalMin;
     }
   }
-  const yarns = await db.find<YarnCatalogDoc>(COLLECTIONS.YARN_CATALOG, () => true);
+
   const yarnWeightMap = new Map(yarns.map((y) => [y._id, y.unitWeightG || 50]));
+  const horizonDays = params.mpHorizonDays ?? 3;
+
+  let maxSingleUnits = 0;
+  let totalPoolFreeMin = 0;
 
   for (const w of weavers) {
+    const weaverInput = {
+      userId: w._id,
+      acceptingOrders: w.acceptingOrders,
+      pauseUntil: w.pauseUntil,
+      restDays: w.restDays,
+      dailyCapacityMin: w.dailyCapacityMin,
+      speedFactor: w.speedFactor,
+      backlogMin: backlogMap.get(w._id) ?? 0,
+      isStalledHead: stalledWeavers.has(w._id),
+      yarnInventory: w.yarnInventory,
+      certifiedStyleCodes: certifiedByWeaver.get(w._id) ?? [],
+    };
     const cap = computeWeaverStyleUnits(
-      {
-        userId: w._id,
-        acceptingOrders: w.acceptingOrders,
-        pauseUntil: w.pauseUntil,
-        restDays: w.restDays,
-        dailyCapacityMin: w.dailyCapacityMin,
-        speedFactor: w.speedFactor,
-        backlogMin: backlogMap.get(w._id) ?? 0,
-        yarnInventory: w.yarnInventory,
-      },
+      weaverInput,
       {
         skuCode: style._id,
         standardMin: style.standardMin,
@@ -125,11 +173,17 @@ export async function checkProductSellability(
         })),
       },
       undefined,
-      { nowUtcMs: now, horizonDays: params.mpHorizonDays ?? 3 },
+      { nowUtcMs: now, horizonDays },
     );
-    if (cap.units >= qty) {
-      return { sellable: true, availableReadyUnits };
+    if (cap.units > maxSingleUnits) maxSingleUnits = cap.units;
+    if (cap.units > 0) {
+      totalPoolFreeMin += computeWeaverFreeMin(weaverInput, { nowUtcMs: now, horizonDays });
     }
+  }
+
+  const netPoolMin = totalPoolFreeMin - unassignedWaitingMin;
+  if (maxSingleUnits >= qty && netPoolMin >= style.standardMin * qty) {
+    return { sellable: true, availableReadyUnits };
   }
 
   return { sellable: false, availableReadyUnits, reason: "temporarily_sold_out" };
@@ -153,6 +207,9 @@ export async function createMpBuyerOrder(
 ): Promise<{ order: OrderDoc; payment: PaymentDoc; reservedStockWeaverId?: string }> {
   const now = params.nowUtcMs ?? Date.now();
   const qty = params.qty ?? 1;
+  if (!Number.isInteger(qty) || qty <= 0) {
+    throw new AppError(ERROR_CODES.VALIDATION_ERROR, "购买数量须为正整数");
+  }
   const prod = await db.get<ProductDoc>(COLLECTIONS.PRODUCTS, params.productId);
   if (!prod || !prod.isOnSale) {
     throw new AppError(ERROR_CODES.NOT_FOUND, "商品不存在或已下架");
@@ -250,6 +307,25 @@ export async function handleWxPaySuccessWebhook(
   },
 ): Promise<{ packageId: string; alreadyProcessed: boolean }> {
   const now = params.nowUtcMs ?? Date.now();
+
+  // Handle weaver cooperative performance deposit cashier callback (`DEP_...`)
+  if (params.orderId.startsWith("DEP_")) {
+    const depPay = await db.get<PaymentDoc>(COLLECTIONS.PAYMENTS, paymentId(params.orderId));
+    if (!depPay) throw new AppError(ERROR_CODES.NOT_FOUND, "Deposit payment record not found");
+    if (depPay.status === "paid") {
+      return { packageId: params.orderId, alreadyProcessed: true };
+    }
+    await db.put<PaymentDoc>(COLLECTIONS.PAYMENTS, {
+      ...depPay,
+      wxTransactionId: params.wxTransactionId,
+      status: "paid",
+      paidAt: now,
+      rawNotifyAt: now,
+    });
+    await recordWeaverDeposit(db, depPay.buyerUserId, LEDGER_ACCOUNT_CODES.ASSET_WXPAY_CASH, now);
+    return { packageId: params.orderId, alreadyProcessed: false };
+  }
+
   const ord = await db.get<OrderDoc>(COLLECTIONS.ORDERS, params.orderId);
   if (!ord) throw new AppError(ERROR_CODES.NOT_FOUND, "Order not found");
 
@@ -296,6 +372,11 @@ export async function handleWxPaySuccessWebhook(
   const addr = ord.receiverAddrId ? await db.get<AddressDoc>(COLLECTIONS.ADDRESSES, ord.receiverAddrId) : null;
 
   const pkgId = newPackageId();
+  const isReadyStock = prod?.saleType === "ready_stock";
+  if (isReadyStock) {
+    await commitPaidStockReservation(db, { orderId: ord._id, packageId: pkgId, nowUtcMs: now });
+  }
+
   const pkgDoc: OrderPackageDoc = {
     _id: pkgId,
     channel: "mp_wechat",
@@ -308,6 +389,7 @@ export async function handleWxPaySuccessWebhook(
     itemsSnapshot: [
       {
         skuCode: style._id,
+        skuName: style.name,
         qty: ord.qty,
         standardMin: style.standardMin,
         yarnBomSnapshot: style.yarnBom.map((b) => ({
@@ -323,7 +405,7 @@ export async function handleWxPaySuccessWebhook(
     ],
     totalMin: style.standardMin * ord.qty,
     status: "waiting_dispatch",
-    isReadyStockReuse: prod?.saleType === "ready_stock",
+    isReadyStockReuse: isReadyStock,
     attemptCount: 0,
     reviewMode: "required",
     dispatchableAt: now,
@@ -348,6 +430,7 @@ export async function requestMpBuyerRefund(
     buyerUserId: string;
     reason: string;
     trigger?: RefundDoc["trigger"];
+    paymentPort?: Pick<PaymentPort, "initiateRefund">;
     nowUtcMs?: number;
   },
 ): Promise<RefundDoc> {
@@ -356,16 +439,46 @@ export async function requestMpBuyerRefund(
   if (!ord || ord.buyerUserId !== params.buyerUserId) {
     throw new AppError(ERROR_CODES.FORBIDDEN, "订单不存在或无权操作");
   }
+  if (ord.status === "refunded") {
+    throw new AppError(ERROR_CODES.DUPLICATE_IDEMPOTENCY_KEY, "该订单已完成退款，请勿重复申请");
+  }
+  if (ord.status !== "paid") {
+    throw new AppError(ERROR_CODES.VALIDATION_ERROR, "当前订单未支付，不可发起退款");
+  }
+
   const pkgs = await db.find<OrderPackageDoc>(COLLECTIONS.ORDER_PACKAGES, (p) => p.orderIds.includes(ord._id));
   const pkg = pkgs[0];
   if (!pkg) throw new AppError(ERROR_CODES.NOT_FOUND, "未找到关联履约包裹");
 
   const existingRefunds = await db.find<RefundDoc>(COLLECTIONS.REFUNDS, (r) => r.orderId === ord._id);
+  if (existingRefunds.some((r) => ["pending_review", "refunding", "succeeded"].includes(r.status))) {
+    throw new AppError(ERROR_CODES.DUPLICATE_IDEMPOTENCY_KEY, "该订单已有处理中或已完成的退款单");
+  }
+
   const seq = existingRefunds.length + 1;
   const rId = refundId(ord._id, seq);
 
   const isPreMaking = pkg.status === "waiting_dispatch" || pkg.status === "offered";
   if (isPreMaking) {
+    // Cancel active pending offer first so innocent weaver is never penalized on 1h sweep!
+    if (pkg.status === "offered" && pkg.attemptCount > 0) {
+      const offId = dispatchOfferId(pkg._id, pkg.attemptCount);
+      const off = await db.get<DispatchOfferDoc>(COLLECTIONS.DISPATCH_OFFERS, offId);
+      if (off && off.status === "pending") {
+        await transitionStatus(
+          db,
+          COLLECTIONS.DISPATCH_OFFERS,
+          off._id,
+          DISPATCH_OFFER_STATUS_SPEC,
+          "pending",
+          "cancelled",
+          off.version,
+          () => ({ respondedAt: now }),
+          now,
+        );
+      }
+    }
+
     await transitionStatus(
       db,
       COLLECTIONS.ORDER_PACKAGES,
@@ -377,6 +490,27 @@ export async function requestMpBuyerRefund(
       () => ({ assignedWeaverId: undefined }),
       now,
     );
+    await releaseStockReservationForOrderOrPackage(db, {
+      orderIds: [ord._id],
+      packageId: pkg._id,
+      nowUtcMs: now,
+    });
+    await db.put<OrderDoc>(COLLECTIONS.ORDERS, { ...ord, status: "refunded", updatedAt: now });
+
+    let wxRefundId: string | undefined;
+    if (params.paymentPort) {
+      const payDoc = await db.get<PaymentDoc>(COLLECTIONS.PAYMENTS, paymentId(ord._id));
+      const gw = await params.paymentPort.initiateRefund({
+        mchId: payDoc?.mchId ?? "MCH_DEFAULT",
+        outTradeNo: payDoc?.outTradeNo ?? `WXTZ_${ord._id}`,
+        outRefundNo: rId,
+        refundFen: ord.totalPaidFen,
+        totalFen: ord.totalPaidFen,
+        reason: params.reason || "派单前买家秒退",
+      });
+      wxRefundId = gw.wxRefundId;
+    }
+
     const refDoc: RefundDoc = {
       _id: rId,
       orderId: ord._id,
@@ -385,6 +519,7 @@ export async function requestMpBuyerRefund(
       trigger: "buyer_pre_dispatch",
       autoApproved: true,
       amountFen: ord.totalPaidFen,
+      wxRefundId,
       weaverCraftPolicy: "none",
       status: "succeeded",
       reason: params.reason,
@@ -407,15 +542,26 @@ export async function requestMpBuyerRefund(
     return refDoc;
   }
 
+  const inferredTrigger: RefundDoc["trigger"] =
+    params.trigger ??
+    (["making", "photo_review", "awaiting_seal", "ready_to_ship"].includes(pkg.status)
+      ? "buyer_in_making"
+      : "quality_defect");
+
   const refDoc: RefundDoc = {
     _id: rId,
     orderId: ord._id,
     packageId: pkg._id,
     channel: "mp_wechat",
-    trigger: params.trigger ?? (pkg.status === "making" ? "buyer_in_making" : "quality_defect"),
+    trigger: inferredTrigger,
     autoApproved: false,
     amountFen: ord.totalPaidFen,
-    weaverCraftPolicy: pkg.status === "making" ? "keep_as_stock" : "forfeit_craft_only",
+    weaverCraftPolicy:
+      inferredTrigger === "buyer_in_making"
+        ? "keep_as_stock"
+        : inferredTrigger === "logistics_loss"
+          ? "keep_paid"
+          : "forfeit_craft_only",
     status: "pending_review",
     reason: params.reason,
     version: 1,
@@ -426,10 +572,11 @@ export async function requestMpBuyerRefund(
 }
 
 /**
- * Admin resolves post-acceptance refund / quality defect / courier loss:
+ * Admin resolves post-acceptance refund / 7d return / quality defect / courier loss:
  *  - `quality_defect`: refunds buyer in full, does NOT accrue craft fee, NEVER claws back weaver's other money, deducts credit score;
- *  - `logistics_loss`: refunds buyer in full (`EXP_LOSS_COMP`) AND still pays weaver her full craft fee + yarn pool accrual!
- *  - `buyer_in_making`: refunds buyer, transitions package to `cancelled_made`, registers `weaverStock`, and still pays weaver!
+ *  - `logistics_loss`: refunds buyer in full (`EXP_LOSS_COMP`) AND still pays weaver her full multi-qty craft fee + yarn pool accrual!
+ *  - `buyer_in_making`: refunds buyer, transitions package to `cancelled_made`, compacts weaver queue, and registers `weaverStock`!
+ *  - `buyer_return_7d`: refunds buyer, transitions `signed -> returned`, and registers returned core item to `weaverStock`!
  */
 export async function resolvePendingRefundByAdmin(
   db: DbAdapter,
@@ -437,6 +584,7 @@ export async function resolvePendingRefundByAdmin(
     refundId: string;
     adminUserId: string;
     approve: boolean;
+    paymentPort?: Pick<PaymentPort, "initiateRefund">;
     nowUtcMs?: number;
   },
 ): Promise<RefundDoc> {
@@ -461,6 +609,14 @@ export async function resolvePendingRefundByAdmin(
     return tr.doc!;
   }
 
+  const ord = await db.get<OrderDoc>(COLLECTIONS.ORDERS, ref.orderId);
+  if (ord?.status === "refunded") {
+    throw new AppError(ERROR_CODES.DUPLICATE_IDEMPOTENCY_KEY, "关联订单已退款");
+  }
+
+  const pkg = (await db.get<OrderPackageDoc>(COLLECTIONS.ORDER_PACKAGES, ref.packageId))!;
+  const amt = asPositiveFen(ref.amountFen);
+
   const tr1 = await transitionStatus(
     db,
     COLLECTIONS.REFUNDS,
@@ -472,20 +628,23 @@ export async function resolvePendingRefundByAdmin(
     () => ({ operatorId: params.adminUserId }),
     now,
   );
-  const tr2 = await transitionStatus(
-    db,
-    COLLECTIONS.REFUNDS,
-    ref._id,
-    REFUND_STATUS_SPEC,
-    "refunding",
-    "succeeded",
-    tr1.doc!.version,
-    () => ({ completedAt: now }),
-    now,
-  );
+  if (!tr1.moved || !tr1.doc) {
+    throw new AppError(ERROR_CODES.CAS_CONFLICT, "退款单状态竞争冲突");
+  }
 
-  const pkg = (await db.get<OrderPackageDoc>(COLLECTIONS.ORDER_PACKAGES, ref.packageId))!;
-  const amt = asPositiveFen(ref.amountFen);
+  let wxRefundId: string | undefined;
+  if (params.paymentPort && ord) {
+    const payDoc = await db.get<PaymentDoc>(COLLECTIONS.PAYMENTS, paymentId(ord._id));
+    const gw = await params.paymentPort.initiateRefund({
+      mchId: payDoc?.mchId ?? "MCH_DEFAULT",
+      outTradeNo: payDoc?.outTradeNo ?? `WXTZ_${ord._id}`,
+      outRefundNo: ref._id,
+      refundFen: amt,
+      totalFen: ord.totalPaidFen,
+      reason: ref.reason || ref.trigger,
+    });
+    wxRefundId = gw.wxRefundId;
+  }
 
   if (ref.trigger === "quality_defect") {
     if (pkg.status === "signed") {
@@ -542,32 +701,55 @@ export async function resolvePendingRefundByAdmin(
         { accountCode: LEDGER_ACCOUNT_CODES.EXP_LOSS_COMP, debitFen: amt, creditFen: ZERO_FEN },
         { accountCode: LEDGER_ACCOUNT_CODES.ASSET_WXPAY_CASH, debitFen: ZERO_FEN, creditFen: amt },
       ],
-      memo: `快递丢损平台兜底赔买家（照常给织女结工价）`,
+      memo: `快递丢损平台兜底赔买家（照常给织女结全量工价）`,
       createdAt: now,
     });
     if (pkg.assignedWeaverId) {
-      const item = pkg.itemsSnapshot[0]!;
+      let craftTotal = ZERO_FEN;
+      let yarnAccrualTotal = ZERO_FEN;
+      let shipShare = ZERO_FEN;
+      for (const item of pkg.itemsSnapshot) {
+        for (let q = 0; q < item.qty; q++) {
+          craftTotal = addFen(craftTotal, item.craftFeeFen);
+          yarnAccrualTotal = addFen(yarnAccrualTotal, item.yarnPoolAccrualFen);
+        }
+        if (item.weaverShipShareFen > shipShare) shipShare = item.weaverShipShareFen;
+      }
+      const shipDoc = await db.get<ShipmentDoc>(COLLECTIONS.SHIPMENTS, shipmentId(pkg._id));
+      let selfShipReimb = ZERO_FEN;
+      if (shipDoc?.fulfillMode === "weaver_self_ship") {
+        shipShare = ZERO_FEN;
+        if (shipDoc.selfShipReimbFen) selfShipReimb = shipDoc.selfShipReimbFen;
+      }
       await accrueSettledPackage(db, {
         packageId: pkg._id,
         weaverId: pkg.assignedWeaverId,
-        craftFeeFen: item.craftFeeFen,
-        weaverShipShareFen: asNonNegativeFen(item.weaverShipShareFen),
-        yarnPoolAccrualFen: item.yarnPoolAccrualFen,
+        craftFeeFen: craftTotal,
+        weaverShipShareFen: asNonNegativeFen(shipShare),
+        yarnPoolAccrualFen: yarnAccrualTotal,
+        selfShipReimbFen: selfShipReimb,
         nowUtcMs: now,
       });
     }
-  } else if (ref.trigger === "buyer_in_making" && pkg.status === "making") {
+  } else if (
+    ref.trigger === "buyer_in_making" &&
+    ["making", "photo_review", "awaiting_seal", "ready_to_ship"].includes(pkg.status)
+  ) {
+    const weaverId = pkg.assignedWeaverId;
     await transitionStatus(
       db,
       COLLECTIONS.ORDER_PACKAGES,
       pkg._id,
       ORDER_PACKAGE_STATUS_SPEC,
-      "making",
+      pkg.status,
       "cancelled_made",
       pkg.version,
-      undefined,
+      () => ({ queueSeq: undefined, stallPromptedAt: undefined }),
       now,
     );
+    if (weaverId) {
+      await compactWeaverQueue(db, weaverId, now);
+    }
     await registerCancelledPackageToWeaverStock(db, pkg, now);
     await postLedgerEntry(db, {
       _id: `cancel_made_ref:${ref._id}`,
@@ -580,7 +762,52 @@ export async function resolvePendingRefundByAdmin(
       memo: `开工后买家取消退款，成品转入余货专区`,
       createdAt: now,
     });
+  } else if (ref.trigger === "buyer_return_7d" && pkg.status === "signed") {
+    await transitionStatus(
+      db,
+      COLLECTIONS.ORDER_PACKAGES,
+      pkg._id,
+      ORDER_PACKAGE_STATUS_SPEC,
+      "signed",
+      "returned",
+      pkg.version,
+      undefined,
+      now,
+    );
+    await registerCancelledPackageToWeaverStock(db, pkg, now);
+    await postLedgerEntry(db, {
+      _id: `ret7d_ref:${ref._id}`,
+      eventType: "quality_refund",
+      bizId: ref._id,
+      lines: [
+        { accountCode: LEDGER_ACCOUNT_CODES.REV_PRODUCT_SALES, debitFen: amt, creditFen: ZERO_FEN },
+        { accountCode: LEDGER_ACCOUNT_CODES.ASSET_WXPAY_CASH, debitFen: ZERO_FEN, creditFen: amt },
+      ],
+      memo: `签收7天无理由退货退款，固定款回收再售`,
+      createdAt: now,
+    });
+  } else {
+    throw new AppError(
+      ERROR_CODES.INVALID_STATE_TRANSITION,
+      `当前包裹状态 (${pkg.status}) 不支持退款类型 (${ref.trigger})`,
+    );
   }
+
+  if (ord) {
+    await db.put<OrderDoc>(COLLECTIONS.ORDERS, { ...ord, status: "refunded", updatedAt: now });
+  }
+
+  const tr2 = await transitionStatus(
+    db,
+    COLLECTIONS.REFUNDS,
+    ref._id,
+    REFUND_STATUS_SPEC,
+    "refunding",
+    "succeeded",
+    tr1.doc.version,
+    () => ({ wxRefundId, completedAt: now }),
+    now,
+  );
 
   return tr2.doc!;
 }

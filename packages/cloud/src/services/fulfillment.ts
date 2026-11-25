@@ -5,6 +5,7 @@ import {
   ERROR_CODES,
   ZERO_FEN,
   addFen,
+  formatCstYmd,
   BAG_STICKER_STATUS_SPEC,
   ORDER_PACKAGE_STATUS_SPEC,
   PHOTO_REVIEW_STATUS_SPEC,
@@ -40,6 +41,8 @@ export async function submitFinishedWork(
     bagStickerCode?: string; // required only when reviewMode === 'skip'
     sealedPhotoFileId?: string; // required only when reviewMode === 'skip'
     pickupWindow?: string;
+    selfDropoffTrackingNo?: string;
+    standardSelfShipReimbFen?: Fen;
     nowUtcMs?: number;
   },
 ): Promise<{ nextStatus: OrderPackageDoc["status"]; reviewId?: string; duplicateFlagged?: boolean }> {
@@ -72,7 +75,16 @@ export async function submitFinishedWork(
       throw new AppError(ERROR_CODES.VALIDATION_ERROR, "免审直发需同时扫袋码贴纸并上传封签留底照");
     }
     await bindBagStickerToPackage(db, params.weaverId, params.bagStickerCode, pkg._id, now);
-    await createReadyShipment(db, pkg, params.weaverId, params.sealedPhotoFileId, params.pickupWindow, now);
+    const shipDoc = await createReadyShipment(
+      db,
+      pkg,
+      params.weaverId,
+      params.sealedPhotoFileId,
+      params.pickupWindow,
+      now,
+      params.selfDropoffTrackingNo,
+      params.standardSelfShipReimbFen,
+    );
 
     const tr = await transitionStatus(
       db,
@@ -85,10 +97,25 @@ export async function submitFinishedWork(
       () => ({ bagQrCode: params.bagStickerCode, queueSeq: undefined, lastProgressAt: now }),
       now,
     );
+    let finalStatus: OrderPackageDoc["status"] = "ready_to_ship";
+    if (tr.moved && tr.doc && shipDoc.fulfillMode === "weaver_self_ship" && params.selfDropoffTrackingNo) {
+      await transitionStatus(
+        db,
+        COLLECTIONS.ORDER_PACKAGES,
+        pkg._id,
+        ORDER_PACKAGE_STATUS_SPEC,
+        "ready_to_ship",
+        "shipped",
+        tr.doc.version,
+        () => ({ shippedAt: now }),
+        now,
+      );
+      finalStatus = "shipped";
+    }
     if (tr.moved) {
       await compactWeaverQueue(db, params.weaverId, now);
     }
-    return { nextStatus: "ready_to_ship" };
+    return { nextStatus: finalStatus };
   }
 
   // Standard 3-slot photo review path
@@ -228,8 +255,14 @@ export async function castVolunteerVote(
   if (!rev || rev.status !== "pending") {
     throw new AppError(ERROR_CODES.CAS_CONFLICT, "Review is no longer pending");
   }
-  if (rev.weaverId === params.volunteerUserId) {
-    throw new AppError(ERROR_CODES.FORBIDDEN, "Cannot review own work");
+  if (rev.weaverId === params.volunteerUserId || vol.recentWeaverIds.includes(rev.weaverId)) {
+    throw new AppError(ERROR_CODES.FORBIDDEN, "Blind review conflict-of-interest avoidance");
+  }
+
+  const todayYmd = formatCstYmd(now);
+  const curTodayCount = vol.todayDate === todayYmd ? vol.todayCount : 0;
+  if (curTodayCount >= vol.dailyLimit) {
+    throw new AppError(ERROR_CODES.FORBIDDEN, "今日盲审张数已达上限，明天再来吧");
   }
 
   const voteKey = volunteerVoteId(rev._id, params.volunteerUserId);
@@ -246,16 +279,21 @@ export async function castVolunteerVote(
     throw new AppError(ERROR_CODES.DUPLICATE_IDEMPOTENCY_KEY, "Already voted on this review");
   }
 
-  // Update volunteer points & avoidance window
+  // Update volunteer points, daily counter & avoidance window
   await db.atomicUpdate<VolunteerDoc>(
     COLLECTIONS.VOLUNTEERS,
     vol._id,
     () => true,
-    (v) => ({
-      ...v,
-      points: v.points + 2,
-      recentWeaverIds: [...v.recentWeaverIds.slice(-9), rev.weaverId],
-    }),
+    (v) => {
+      const baseCount = v.todayDate === todayYmd ? v.todayCount : 0;
+      return {
+        ...v,
+        todayDate: todayYmd,
+        todayCount: baseCount + 1,
+        points: v.points + 2,
+        recentWeaverIds: [...v.recentWeaverIds.slice(-9), rev.weaverId],
+      };
+    },
   );
 
   const allVotes = await db.find<VolunteerVoteDoc>(COLLECTIONS.VOLUNTEER_VOTES, (v) => v.reviewId === rev._id);
@@ -333,9 +371,19 @@ export async function sweepPhotoReviewSla(
 
   for (const rev of overdue) {
     const votes = await db.find<VolunteerVoteDoc>(COLLECTIONS.VOLUNTEER_VOTES, (v) => v.reviewId === rev._id);
-    const allHigh = votes.length >= 2 && votes.every((v) => v.score >= 4);
+    let allHighAndTrusted = votes.length >= 2 && votes.every((v) => v.score >= 4);
+    if (allHighAndTrusted) {
+      for (const v of votes) {
+        const vDoc = await db.get<VolunteerDoc>(COLLECTIONS.VOLUNTEERS, volunteerId(v.volunteerUserId));
+        const acc = vDoc && vDoc.calibrationTotal > 0 ? vDoc.calibrationCorrect / vDoc.calibrationTotal : 0;
+        if (!vDoc || vDoc.status !== "active" || acc < 0.8) {
+          allHighAndTrusted = false;
+          break;
+        }
+      }
+    }
 
-    if (allHigh) {
+    if (allHighAndTrusted) {
       const tr = await transitionStatus(
         db,
         COLLECTIONS.PHOTO_REVIEWS,
@@ -613,12 +661,13 @@ export async function sweepSettleEligiblePackages(
       if (item.weaverShipShareFen > shipShare) shipShare = item.weaverShipShareFen;
     }
 
-    // If township weaver self-shipped at station, waive weaverShipShareFen and add standard reimbursement
+    // If township weaver self-shipped at station, waive weaverShipShareFen and pass standard reimbursement separately (EXP_SHIPPING_PLATFORM)
     const shipDoc = await db.get<ShipmentDoc>(COLLECTIONS.SHIPMENTS, shipmentId(pkg._id));
+    let selfShipReimb = ZERO_FEN;
     if (shipDoc?.fulfillMode === "weaver_self_ship") {
       shipShare = ZERO_FEN;
       if (shipDoc.selfShipReimbFen) {
-        craftTotal = addFen(craftTotal, shipDoc.selfShipReimbFen);
+        selfShipReimb = shipDoc.selfShipReimbFen;
       }
     }
 
@@ -628,6 +677,7 @@ export async function sweepSettleEligiblePackages(
       craftFeeFen: craftTotal,
       weaverShipShareFen: shipShare,
       yarnPoolAccrualFen: yarnAccrualTotal,
+      selfShipReimbFen: selfShipReimb,
       nowUtcMs,
     });
     settledReadyCount++;

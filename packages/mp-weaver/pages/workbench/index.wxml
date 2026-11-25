@@ -44,7 +44,7 @@
 
       <view class="pkg-items">
         <view wx:for="{{item.itemsSnapshot}}" wx:for-item="sku" wx:key="skuCode" class="sku-row">
-          <text>{{sku.skuName}} × {{sku.qty}}</text>
+          <text>{{sku.skuName || sku.skuCode}} × {{sku.qty}}</text>
           <text class="sku-min">标准工时 {{sku.standardMin}} 分钟</text>
         </view>
       </view>

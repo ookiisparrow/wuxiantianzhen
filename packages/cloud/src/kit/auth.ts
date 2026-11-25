@@ -10,6 +10,7 @@ export interface LoginInput {
   phone?: string;
   unionid?: string;
   nickname?: string;
+  allowOpenidRebind?: boolean;
   nowUtcMs?: number;
 }
 
@@ -53,6 +54,15 @@ export async function loginOrMergeUser(
   const byPhone = await db.find<UserDoc>(COLLECTIONS.USERS, (u) => u.phone === normalizedPhone);
   if (byPhone[0]) {
     const existing = byPhone[0];
+    if (existing.unionid && input.unionid && existing.unionid !== input.unionid) {
+      throw new AppError(ERROR_CODES.FORBIDDEN, "该手机号已绑定其他微信主体账号，禁止覆盖");
+    }
+    const alreadyBoundSameApp = Boolean(existing[openidField] && existing[openidField] !== input.openid);
+    const sameUnionIdVerified = Boolean(existing.unionid && input.unionid && existing.unionid === input.unionid);
+    if (alreadyBoundSameApp && input.allowOpenidRebind === false && !sameUnionIdVerified) {
+      throw new AppError(ERROR_CODES.FORBIDDEN, "该手机号已绑定其他微信账号，请使用原账号或联系运营迁移");
+    }
+
     const nextRoles: UserRole[] = existing.roles.includes(defaultRole)
       ? existing.roles
       : [...existing.roles, defaultRole];

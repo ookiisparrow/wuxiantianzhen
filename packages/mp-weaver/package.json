@@ -2,5 +2,6 @@
   "name": "@wxtz/mp-weaver",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "description": "无限天真·织女与创作者工作台小程序 (mp-weaver)"
 }

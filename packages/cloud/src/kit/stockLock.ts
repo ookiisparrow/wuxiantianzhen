@@ -96,15 +96,147 @@ export async function reserveReadyStock(
 }
 
 /**
- * Releases expired unpaid reservations back into `availableQty`. Invoked every 5 min by cron.
+ * Marks a 15-min reservation as paid and binds it to the created fulfillment `packageId`,
+ * so `releaseExpiredReservations` never releases already-paid stock back to `availableQty`.
+ */
+export async function commitPaidStockReservation(
+  db: DbAdapter,
+  params: { orderId: string; packageId: string; nowUtcMs?: number },
+): Promise<string | undefined> {
+  const now = params.nowUtcMs ?? Date.now();
+  const docs = await db.find<WeaverStockDoc>(COLLECTIONS.WEAVER_STOCK, (d) =>
+    d.reservations.some((r) => r.orderId === params.orderId),
+  );
+  const holder = docs[0];
+  if (!holder) return undefined;
+
+  await db.atomicUpdate<WeaverStockDoc>(
+    COLLECTIONS.WEAVER_STOCK,
+    holder._id,
+    (cur) => cur.reservations.some((r) => r.orderId === params.orderId),
+    (cur) => ({
+      ...cur,
+      reservations: cur.reservations.map((r) =>
+        r.orderId === params.orderId ? { ...r, paid: true, packageId: params.packageId } : r,
+      ),
+      version: cur.version + 1,
+      updatedAt: now,
+    }),
+  );
+  return holder.weaverId;
+}
+
+/**
+ * Immediately releases any active reservation held by a cancelled order or package back into `availableQty`.
+ */
+export async function releaseStockReservationForOrderOrPackage(
+  db: DbAdapter,
+  params: { orderIds: readonly string[]; packageId?: string; nowUtcMs?: number },
+): Promise<number> {
+  const now = params.nowUtcMs ?? Date.now();
+  const orderSet = new Set(params.orderIds);
+  const matches = (r: WeaverStockDoc["reservations"][number]) =>
+    orderSet.has(r.orderId) || (params.packageId !== undefined && r.packageId === params.packageId);
+
+  const docs = await db.find<WeaverStockDoc>(COLLECTIONS.WEAVER_STOCK, (d) => d.reservations.some(matches));
+  let totalFreed = 0;
+
+  for (const doc of docs) {
+    let freed = 0;
+    const res = await db.atomicUpdate<WeaverStockDoc>(
+      COLLECTIONS.WEAVER_STOCK,
+      doc._id,
+      (cur) => cur.reservations.some(matches),
+      (cur) => {
+        const keep: WeaverStockDoc["reservations"] = [];
+        let local = 0;
+        for (const r of cur.reservations) {
+          if (matches(r)) local += r.qty;
+          else keep.push(r);
+        }
+        freed = local;
+        return {
+          ...cur,
+          availableQty: cur.availableQty + local,
+          reservedQty: Math.max(0, cur.reservedQty - local),
+          reservations: keep,
+          version: cur.version + 1,
+          updatedAt: now,
+        };
+      },
+    );
+    if (res.updated) totalFreed += freed;
+  }
+  return totalFreed;
+}
+
+/**
+ * Atomically consumes ready stock upon weaver accepting a `stock`-tier offer:
+ *  - If a reservation already exists for this order/package, consumes `reservedQty`;
+ *  - Otherwise consumes free `availableQty >= qty`.
+ * Returns `{ consumed: false }` on race loss so caller NEVER double-assigns 1 physical stock unit.
+ */
+export async function consumeReadyStockForAcceptedOffer(
+  db: DbAdapter,
+  params: {
+    weaverId: string;
+    skuCode: string;
+    qty: number;
+    orderIds: readonly string[];
+    packageId: string;
+    nowUtcMs?: number;
+  },
+): Promise<{ consumed: boolean }> {
+  const now = params.nowUtcMs ?? Date.now();
+  const id = weaverStockId(params.weaverId, params.skuCode);
+  const orderSet = new Set(params.orderIds);
+  const isOurs = (r: WeaverStockDoc["reservations"][number]) =>
+    orderSet.has(r.orderId) || r.packageId === params.packageId || r.orderId === params.packageId;
+
+  const res = await db.atomicUpdate<WeaverStockDoc>(
+    COLLECTIONS.WEAVER_STOCK,
+    id,
+    (cur) => {
+      const reservedForUs = cur.reservations.filter(isOurs).reduce((s, r) => s + r.qty, 0);
+      return reservedForUs >= params.qty || cur.availableQty >= params.qty;
+    },
+    (cur) => {
+      const reservedForUs = cur.reservations.filter(isOurs).reduce((s, r) => s + r.qty, 0);
+      if (reservedForUs >= params.qty) {
+        return {
+          ...cur,
+          reservedQty: Math.max(0, cur.reservedQty - reservedForUs),
+          availableQty: cur.availableQty + (reservedForUs - params.qty),
+          reservations: cur.reservations.filter((r) => !isOurs(r)),
+          items: cur.items.slice(params.qty),
+          version: cur.version + 1,
+          updatedAt: now,
+        };
+      }
+      return {
+        ...cur,
+        availableQty: cur.availableQty - params.qty,
+        items: cur.items.slice(params.qty),
+        version: cur.version + 1,
+        updatedAt: now,
+      };
+    },
+  );
+  return { consumed: res.updated };
+}
+
+/**
+ * Releases expired UNPAID reservations back into `availableQty`. Invoked every 5 min by cron.
  */
 export async function releaseExpiredReservations(
   db: DbAdapter,
   nowUtcMs: number = Date.now(),
 ): Promise<{ releasedUnits: number; touchedDocs: number }> {
+  const isExpiredUnpaid = (r: WeaverStockDoc["reservations"][number]) => !r.paid && r.expireAt <= nowUtcMs;
+
   const docs = await db.find<WeaverStockDoc>(
     COLLECTIONS.WEAVER_STOCK,
-    (d) => d.reservations.some((r) => r.expireAt <= nowUtcMs),
+    (d) => d.reservations.some(isExpiredUnpaid),
   );
 
   let releasedUnits = 0;
@@ -115,12 +247,12 @@ export async function releaseExpiredReservations(
     const res = await db.atomicUpdate<WeaverStockDoc>(
       COLLECTIONS.WEAVER_STOCK,
       doc._id,
-      (cur) => cur.reservations.some((r) => r.expireAt <= nowUtcMs),
+      (cur) => cur.reservations.some(isExpiredUnpaid),
       (cur) => {
         const keep: WeaverStockDoc["reservations"] = [];
         let freed = 0;
         for (const r of cur.reservations) {
-          if (r.expireAt <= nowUtcMs) freed += r.qty;
+          if (isExpiredUnpaid(r)) freed += r.qty;
           else keep.push(r);
         }
         localReleased = freed;
