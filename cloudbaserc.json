@@ -1,0 +1,33 @@
+{
+  "version": "2.0",
+  "envId": "wxtz-env-replace-before-deploy",
+  "functionRoot": "./packages/cloud",
+  "functions": [
+    {
+      "name": "wxtz-api",
+      "timeout": 20,
+      "envVariables": {
+        "NODE_ENV": "production"
+      },
+      "runtime": "Nodejs18.15",
+      "installDependency": true,
+      "triggers": [
+        {
+          "name": "dispatchTickEveryMinute",
+          "type": "timer",
+          "config": "0 * * * * * *"
+        },
+        {
+          "name": "fiveMinWatchdog",
+          "type": "timer",
+          "config": "0 */5 * * * * *"
+        },
+        {
+          "name": "dailySettle0200",
+          "type": "timer",
+          "config": "0 0 2 * * * *"
+        }
+      ]
+    }
+  ]
+}

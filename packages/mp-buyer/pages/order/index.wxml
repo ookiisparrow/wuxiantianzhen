@@ -1,0 +1,20 @@
+<view class="order-page">
+  <view wx:if="{{productId}}" class="card">
+    <view class="sec-title">🧾 结算款式：{{productId}}</view>
+    <view class="sec-note">收件地址采用隐私面单加密投递，手艺人端不展示您的明文手机号。</view>
+    <view class="btn-primary pay-btn" bindtap="onPayOrder">微信支付立即下单</view>
+  </view>
+
+  <view wx:if="{{currentOrderId}}" class="card">
+    <view class="sec-title">订单号：{{currentOrderId}}（{{orderStatus}}）</view>
+    <view class="refund-actions">
+      <view class="btn-ghost" bindtap="onInstantCancelPreDispatch">未接单前 · 一键秒退</view>
+      <view class="btn-ghost" bindtap="onAfterSaleApply">开工后 / 收货后申请售后</view>
+    </view>
+  </view>
+
+  <view class="card cs-card">
+    <view class="sec-note">遇到物流异常、线头修补或定制咨询？</view>
+    <button class="contact-btn" open-type="contact">💬 联系无限天真微信人工客服</button>
+  </view>
+</view>

@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>无限天真 · 云端工坊运营总控台</title>
+    <link rel="stylesheet" href="./src/styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <span class="logo-dot"></span>
+        <div>
+          <h1>无限天真 · 云端手作工坊运营总控台</h1>
+          <p>零抽佣去中心化排产 · 个体户小规模免税水位监控 · 复式账本 0 误差</p>
+        </div>
+      </div>
+      <div class="auth-box">
+        <input id="endpointInput" type="url" placeholder="CloudBase HTTP 触发地址 (留空使用本地沙盒演示)" />
+        <input id="jwtInput" type="password" placeholder="Admin 短效 JWT 凭证" />
+        <span id="modeBadge" class="badge badge-demo">本地交互沙盒模式</span>
+      </div>
+    </header>
+
+    <nav class="workspace-nav" id="workspaceNav">
+      <button class="nav-tab active" data-panel="ws-stock">① 开播安全库存 &amp; 免税水位</button>
+      <button class="nav-tab" data-panel="ws-csv">② 抖店双CSV强校验导单</button>
+      <button class="nav-tab" data-panel="ws-ship">③ 中通吉分组待打单 &amp; 卡单</button>
+      <button class="nav-tab" data-panel="ws-funnel">④ 漏斗实检/保证金 &amp; 10s仲裁</button>
+      <button class="nav-tab" data-panel="ws-yarn">⑤ 江浙沪周度线材ERP导出</button>
+      <button class="nav-tab" data-panel="ws-payout">⑥ 14天网银结款 &amp; 账本对账</button>
+    </nav>
+
+    <main class="container">
+      <!-- ① 今晚开播安全库存试算 + 免税水位 -->
+      <section class="panel active" id="ws-stock">
+        <div class="grid-2">
+          <div class="card">
+            <h2>📊 今晚抖音直播间安全可售库存试算</h2>
+            <p class="muted">基于 <code>live</code> 池织女双桶产能（空档工时 × 手头常备余线），跨款式共享工时绝不重复超卖。</p>
+            <div class="form-row">
+              <label>履约天数窗口 (天)<input id="horizonDays" type="number" value="5" min="2" max="10" /></label>
+              <label>主推款 TZ-SASA-01 权重 (%)<input id="weightSasa" type="number" value="70" min="0" max="100" /></label>
+              <label>副推款 TZ-PAPA-01 权重 (%)<input id="weightPapa" type="number" value="30" min="0" max="100" /></label>
+            </div>
+            <button class="btn-primary" id="btnCalcStock">一键试算今晚可挂库存</button>
+            <div id="stockResult" class="result-box"></div>
+          </div>
+
+          <div class="card">
+            <h2>🧾 首期个体户月度免税销售额红线监控</h2>
+            <p class="muted">小规模纳税人季度 30 万 / 月度 10 万普票免征增值税；达 ¥80,000 (80%) 自动预警节奏。</p>
+            <div class="tax-meter">
+              <div class="tax-bar-bg">
+                <div class="tax-bar-fill" id="taxBarFill" style="width: 62%"></div>
+              </div>
+              <div class="tax-stats">
+                <span>本月累计已确认销售额：<strong id="taxCurrentText">¥62,400.00</strong></span>
+                <span>安全预警线：<strong>¥80,000 / 月上限 ¥100,000</strong></span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ② 抖店双表强校验导入 -->
+      <section class="panel" id="ws-csv">
+        <div class="card">
+          <h2>📥 抖店订单表 + 售后退单表双 CSV 强校验导入</h2>
+          <p class="muted">未同时上传退单表且未勾选「今日确认 0 退单」时，系统硬性阻断导入，防止已退订单误派给织女。</p>
+          <div class="grid-2">
+            <label class="textarea-label">
+              抖店订单 CSV JSON 预览行
+              <textarea id="orderCsvJson" rows="6">[
+  {"externalOrderId":"DY20261124001","skuCode":"TZ-SASA-01","qty":1,"paidFen":4900,"province":"浙江省","city":"杭州市","maskedName":"周*","maskedPhone":"138****6611"},
+  {"externalOrderId":"DY20261124002","skuCode":"TZ-SASA-01","qty":1,"paidFen":4900,"province":"江苏省","city":"苏州市","maskedName":"沈*","maskedPhone":"139****2233"}
+]</textarea>
+            </label>
+            <label class="textarea-label">
+              抖店售后退单 CSV JSON 预览行（留空表示未上传退单表，测试强拦截）
+              <textarea id="refundCsvJson" rows="6"></textarea>
+            </label>
+          </div>
+          <label class="checkbox-row">
+            <input type="checkbox" id="chkZeroRefund" />
+            我已核实今日抖店后台【0 售后退单】（不上传退单表时必须勾选）
+          </label>
+          <div class="btn-group">
+            <button class="btn-ghost" id="btnPreviewCsv">第一步：Dry-Run 预检</button>
+            <button class="btn-primary" id="btnCommitCsv">第二步：正式导入并进入冷静期队列</button>
+          </div>
+          <div id="csvResult" class="result-box"></div>
+        </div>
+      </section>
+
+      <!-- ③ 中通吉快递管家分组待打单 + 停工卡单干预 -->
+      <section class="panel" id="ws-ship">
+        <div class="grid-2">
+          <div class="card">
+            <h2>📦 中通吉快递管家（service_id=50）按织女别名分组待打单</h2>
+            <p class="muted">织女已扫八边封袋唯一码并上传封口照，运营按 <code>doudianAddressAlias</code> 批量筛选一键打单。</p>
+            <div id="readyShipGroups" class="list-stack"></div>
+          </div>
+          <div class="card">
+            <h2>🚨 停工熔断 / 人工挂起包裹 (manual_hold)</h2>
+            <p class="muted">队首超 24h+6h 清醒时间未动工已自动收回；以下为多次改派未接或需人工改期包裹。</p>
+            <div id="manualHoldList" class="list-stack"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ④ 四步漏斗实物考级/保证金 + 2h超时10秒仲裁 -->
+      <section class="panel" id="ws-funnel">
+        <div class="grid-2">
+          <div class="card">
+            <h2>⚡ 2小时 SLA 升级审照单 · 10秒极速仲裁台</h2>
+            <p class="muted">陪审团分差 ≥3 分或满 2h 不足 2 票高分时自动推入此处，绝不耽误当日下午揽收。</p>
+            <div id="arbitrateList" class="list-stack"></div>
+          </div>
+          <div class="card">
+            <h2>🪪 四步准入漏斗：实物考级签收 &amp; ¥200 保证金核准</h2>
+            <div class="form-col">
+              <input id="funnelUserId" placeholder="候选人 userId (如 usr_hz_01)" value="usr_hz_candidate_01" />
+              <input id="funnelWeaverNo" placeholder="授予正式工号 (如 WV-JZH-018)" value="WV-JZH-018" />
+              <input id="funnelDepositRef" placeholder="200元保证金收银台单号 (DEP_...)" value="DEP_usr_hz_candidate_01" />
+              <button class="btn-primary" id="btnApproveWeaver">确认 ¥200 保证金入负债专户 · 正式开通织女</button>
+            </div>
+            <div id="funnelResult" class="result-box"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ⑤ 江浙沪主供应商每周线材 ERP CSV 导出 -->
+      <section class="panel" id="ws-yarn">
+        <div class="card">
+          <h2>🧶 江浙沪主供应商每周线材申领集单 CSV 导出</h2>
+          <p class="muted">导出含 <code>supplierSkuCode</code> 的标准 ERP 发货表，并原子流转申领单状态至 <code>dispatched</code>。</p>
+          <div class="form-row">
+            <label>自然周批次号 (weekKey)<input id="yarnWeekKey" type="text" value="2026-W48" /></label>
+            <button class="btn-primary" id="btnExportYarnCsv">一键导出江浙沪线材商 CSV 并标为已发</button>
+          </div>
+          <pre id="yarnCsvPreview" class="code-preview"></pre>
+        </div>
+      </section>
+
+      <!-- ⑥ 14天网银批量结款 + 复式账本对账 -->
+      <section class="panel" id="ws-payout">
+        <div class="grid-2">
+          <div class="card">
+            <h2>🏦 14天双周企业网银批量代发结款单导出</h2>
+            <p class="muted">仅提取签收满 7 天已计提净工价（<code>EXP_CRAFT_COST</code> 已与材料费严格剥离）。</p>
+            <div class="btn-group">
+              <button class="btn-primary" id="btnExportBankCsv">生成 14 天批量代发 CSV</button>
+              <button class="btn-ghost" id="btnConfirmBankPaid">回填银行回单 · 确认批次已汇出</button>
+            </div>
+            <pre id="bankCsvPreview" class="code-preview"></pre>
+          </div>
+          <div class="card">
+            <h2>⚖️ 每日 02:00 复式账本恒等对账监控</h2>
+            <p class="muted">逐户核对 <code>weaverAccounts</code> 余额与不可变 <code>ledgerEntries</code> 分录借贷差额 = 0 分。</p>
+            <div class="reconcile-banner ok" id="reconcileBanner">
+              ✅ 最近一次对账：全量织女账户 100% 零误差平衡（分差 = 0 Fen）
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <script type="module" src="./src/console.js"></script>
+  </body>
+</html>

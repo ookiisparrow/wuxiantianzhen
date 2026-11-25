@@ -1,0 +1,40 @@
+{
+  "pages": [
+    "pages/workbench/index",
+    "pages/pattern/index",
+    "pages/submit/index",
+    "pages/yarn/index",
+    "pages/funnel/index"
+  ],
+  "window": {
+    "navigationBarTitleText": "无限天真·织女工坊",
+    "navigationBarBackgroundColor": "#FFFDF9",
+    "navigationBarTextStyle": "black",
+    "backgroundColor": "#FFFDF9"
+  },
+  "tabBar": {
+    "color": "#7A746E",
+    "selectedColor": "#D96B43",
+    "backgroundColor": "#FFFFFF",
+    "borderStyle": "black",
+    "list": [
+      {
+        "pagePath": "pages/workbench/index",
+        "text": "接单台"
+      },
+      {
+        "pagePath": "pages/yarn/index",
+        "text": "线材库"
+      },
+      {
+        "pagePath": "pages/funnel/index",
+        "text": "准入认证"
+      }
+    ]
+  },
+  "navigateToMiniProgramAppIdList": [
+    "wxtz-mp-buyer-placeholder"
+  ],
+  "style": "v2",
+  "sitemapLocation": "sitemap.json"
+}

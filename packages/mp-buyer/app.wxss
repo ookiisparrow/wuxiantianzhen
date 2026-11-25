@@ -1,0 +1,62 @@
+page {
+  background-color: #fffdf9;
+  color: #2c2623;
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", sans-serif;
+  font-size: 28rpx;
+  line-height: 1.5;
+}
+
+.card {
+  background: #ffffff;
+  border-radius: 24rpx;
+  padding: 28rpx;
+  margin: 24rpx;
+  box-shadow: 0 6rpx 24rpx rgba(44, 38, 35, 0.05);
+}
+
+.btn-primary {
+  background: #d96b43;
+  color: #ffffff;
+  border-radius: 999rpx;
+  font-weight: 600;
+  padding: 20rpx 36rpx;
+  text-align: center;
+}
+
+.btn-disabled {
+  background: #d8d2cc;
+  color: #8c827b;
+  border-radius: 999rpx;
+  font-weight: 600;
+  padding: 20rpx 36rpx;
+  text-align: center;
+}
+
+.btn-ghost {
+  background: #f6efe8;
+  color: #6d5a50;
+  border-radius: 999rpx;
+  font-weight: 500;
+  padding: 18rpx 32rpx;
+  text-align: center;
+}
+
+.pill-fast {
+  display: inline-block;
+  background: #e6f7ed;
+  color: #1f8b4c;
+  font-size: 22rpx;
+  font-weight: 600;
+  padding: 4rpx 14rpx;
+  border-radius: 999rpx;
+}
+
+.pill-craft {
+  display: inline-block;
+  background: #fde8df;
+  color: #c85228;
+  font-size: 22rpx;
+  font-weight: 600;
+  padding: 4rpx 14rpx;
+  border-radius: 999rpx;
+}

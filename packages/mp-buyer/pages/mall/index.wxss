@@ -1,0 +1,57 @@
+.hero-card {
+  background: linear-gradient(135deg, #fff4eb 0%, #ffffff 100%);
+}
+.hero-title {
+  font-size: 34rpx;
+  font-weight: 800;
+  color: #2c2623;
+}
+.hero-sub {
+  margin-top: 8rpx;
+  font-size: 24rpx;
+  color: #7a746e;
+}
+.tabs {
+  display: flex;
+  margin: 0 24rpx;
+  background: #f3ede7;
+  border-radius: 999rpx;
+  padding: 6rpx;
+}
+.tab-item {
+  flex: 1;
+  text-align: center;
+  padding: 16rpx 0;
+  border-radius: 999rpx;
+  font-size: 26rpx;
+  color: #7a746e;
+}
+.tab-active {
+  background: #ffffff;
+  color: #d96b43;
+  font-weight: 700;
+}
+.prod-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24rpx;
+}
+.prod-name {
+  font-size: 32rpx;
+  font-weight: 700;
+}
+.prod-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.prod-price {
+  font-size: 40rpx;
+  font-weight: 800;
+  color: #d96b43;
+}
+.prod-cap {
+  font-size: 24rpx;
+  color: #8c827b;
+}

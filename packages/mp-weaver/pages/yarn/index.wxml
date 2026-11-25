@@ -1,0 +1,36 @@
+<view class="yarn-page">
+  <view class="card">
+    <view class="pool-title">可用免费领线池额度：¥{{yarnPoolYuan}}</view>
+    <view class="pool-note">每完成一单自动按 BOM 含损耗计提入池；江浙沪主供应商每周集单直发（满 3 团起领）。</view>
+  </view>
+
+  <view class="card">
+    <view class="sec-title">🎨 手头常备色双粒度余线账本</view>
+    <view wx:for="{{inventoryList}}" wx:key="yarnCode" class="yarn-row">
+      <view class="yarn-info">
+        <text class="yarn-code">{{item.yarnCode}}</text>
+        <text wx:if="{{item.lowStock}}" class="badge badge-warn">余线 ≤1 团预警</text>
+        <view class="yarn-sub">整团 {{item.wholeSkeins}} 团 · 本轮已耗 {{item.usedSinceCheckG}}g</view>
+      </view>
+      <view class="claim-stepper">
+        <view class="mini-btn" data-idx="{{index}}" data-delta="-1" bindtap="onAdjustClaimQty">-</view>
+        <text class="claim-num">{{item.claimQty}}</text>
+        <view class="mini-btn" data-idx="{{index}}" data-delta="1" bindtap="onAdjustClaimQty">+</view>
+      </view>
+    </view>
+    <view class="btn-primary claim-btn" bindtap="onSubmitWeeklyClaim">提交本周线材申领单（满3团）</view>
+  </view>
+
+  <view wx:if="{{claims.length > 0}}" class="card">
+    <view class="sec-title">🚚 申领单进度</view>
+    <view wx:for="{{claims}}" wx:key="_id" class="claim-item">
+      <text>{{item.weekKey}} · 共 {{item.totalQty}} 件 · 状态：{{item.status}}</text>
+      <view
+        wx:if="{{item.status === 'dispatched'}}"
+        class="btn-ghost"
+        data-id="{{item._id}}"
+        bindtap="onConfirmReceived"
+      >一键确认收货入库</view>
+    </view>
+  </view>
+</view>

@@ -1,0 +1,58 @@
+<view class="volunteer-page">
+  <view class="card">
+    <view class="header-row">
+      <text class="title">🔍 无限天真·匿名粉丝陪审团</text>
+      <text class="pts">荣誉积分：{{points}}</text>
+    </view>
+    <view class="sub">盲审卡已完全隐去手艺人工号与地区，并自动避开您近期审过的作者。</view>
+    <view wx:if="{{!isActiveVolunteer}}" class="btn-primary exam-btn" bindtap="onPassOnboardingExam">
+      完成 5 题找茬上岗测验 · 解锁陪审席位
+    </view>
+  </view>
+
+  <view wx:if="{{isActiveVolunteer && !card}}" class="card">
+    <input
+      class="rev-input"
+      placeholder="输入待审单号（如 rev_pkg_xxx_1）抽取盲审卡"
+      value="{{reviewIdInput}}"
+      bindinput="onInputReviewId"
+    />
+    <view class="btn-primary" bindtap="onLoadBlindCard">抽取三视角比例尺盲审卡</view>
+  </view>
+
+  <view wx:if="{{card}}" class="card">
+    <view class="title">款式 {{card.skuCode || '标准款'}} · 三视角比例尺核验</view>
+    <view class="photo-slots">
+      <view class="slot-pill">正面尺卡：{{card.photoSlots.frontOnScaleCard}}</view>
+      <view class="slot-pill">背面收口：{{card.photoSlots.backStitch}}</view>
+      <view class="slot-pill">侧面饱满：{{card.photoSlots.sidePlumpness}}</view>
+    </view>
+
+    <view class="score-row">
+      <view
+        wx:for="{{[1,2,3,4,5]}}"
+        wx:key="*this"
+        class="score-chip {{selectedScore === item ? 'score-active' : ''}}"
+        data-score="{{item}}"
+        bindtap="onSelectScore"
+      >{{item}} 分</view>
+    </view>
+
+    <view class="tags-wrap">
+      <view
+        wx:for="{{availableTags}}"
+        wx:key="*this"
+        class="tag-chip"
+        data-tag="{{item}}"
+        bindtap="onToggleTag"
+      >{{item}}</view>
+    </view>
+
+    <view
+      class="{{countdownSec > 0 ? 'btn-disabled' : 'btn-primary'}} vote-btn"
+      bindtap="onSubmitVote"
+    >
+      {{countdownSec > 0 ? ('请仔细观察三视角细节（剩余 ' + countdownSec + ' 秒解锁提交）') : '提交匿名盲审评分（+2 荣誉分）'}}
+    </view>
+  </view>
+</view>

@@ -9,7 +9,7 @@
   "scripts": {
     "link:workspaces": "node scripts/link-workspaces.mjs",
     "guard:env": "node scripts/guard-env.mjs",
-    "test": "node scripts/link-workspaces.mjs && node --test packages/shared/src/__tests__/*.test.ts packages/cloud/src/__tests__/*.test.ts",
+    "test": "node scripts/link-workspaces.mjs && node --test packages/shared/src/__tests__/*.test.ts packages/cloud/src/__tests__/*.test.ts packages/admin/src/__tests__/*.test.ts",
     "verify": "npm run guard:env && npm run test"
   },
   "engines": {

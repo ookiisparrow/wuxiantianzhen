@@ -1,0 +1,19 @@
+<view class="cashier-page">
+  <view class="card">
+    <view class="cashier-badge">无限天真 · 专户负债挂账（绝不计入平台营收）</view>
+    <view class="cashier-amount">¥200.00</view>
+    <view class="cashier-title">织女长期合作履约保证金</view>
+    <view class="cashier-rules">
+      <view>1. 仅在实物考级小样合格后收取，用于覆盖首期免费预配12色常备线材与防拆袋贴纸；</view>
+      <view>2. 停止接单且名下无在途未完结包裹时，可随时申请原路 100% 全额退还；</view>
+      <view>3. 支付单号：{{outTradeNo || '点击下方按钮生成'}}。</view>
+    </view>
+
+    <view wx:if="{{!paid}}" class="btn-primary pay-btn" bindtap="onPayDeposit">
+      微信支付缴付 ¥200.00 合作保证金
+    </view>
+    <view wx:else class="btn-ghost pay-btn" bindtap="onBackToWeaverMp">
+      ✅ 已支付 · 返回织女工坊小程序
+    </view>
+  </view>
+</view>

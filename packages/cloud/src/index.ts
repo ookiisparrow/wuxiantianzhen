@@ -15,3 +15,8 @@ export * from "./services/fulfillment.ts";
 export * from "./services/supplyAndPayout.ts";
 export * from "./services/funnel.ts";
 export * from "./services/buyerMall.ts";
+
+export * from "./runtime/wxCloudAdapter.ts";
+export * from "./runtime/adminJwt.ts";
+export * from "./runtime/router.ts";
+export * from "./main.ts";

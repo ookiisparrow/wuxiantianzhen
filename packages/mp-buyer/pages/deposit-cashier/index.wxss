@@ -1,0 +1,31 @@
+.cashier-badge {
+  display: inline-block;
+  background: #fde8df;
+  color: #c85228;
+  font-size: 22rpx;
+  font-weight: 600;
+  padding: 6rpx 18rpx;
+  border-radius: 999rpx;
+}
+.cashier-amount {
+  font-size: 64rpx;
+  font-weight: 800;
+  color: #2c2623;
+  margin: 24rpx 0 8rpx;
+}
+.cashier-title {
+  font-size: 32rpx;
+  font-weight: 700;
+  margin-bottom: 24rpx;
+}
+.cashier-rules {
+  font-size: 24rpx;
+  color: #6d5a50;
+  line-height: 1.7;
+  background: #faf6f2;
+  padding: 24rpx;
+  border-radius: 18rpx;
+}
+.pay-btn {
+  margin-top: 32rpx;
+}

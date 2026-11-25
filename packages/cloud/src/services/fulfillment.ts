@@ -371,6 +371,41 @@ export async function sweepPhotoReviewSla(
   return { autoApproved, escalatedToAdmin };
 }
 
+/**
+ * 10-second admin arbitration for escalated (`needs_admin`) photo reviews.
+ */
+export async function adminArbitratePhotoReview(
+  db: DbAdapter,
+  params: {
+    reviewId: string;
+    adminUserId: string;
+    approve: boolean;
+    nowUtcMs?: number;
+  },
+): Promise<{ reviewStatus: PhotoReviewDoc["status"] }> {
+  const now = params.nowUtcMs ?? Date.now();
+  const rev = await db.get<PhotoReviewDoc>(COLLECTIONS.PHOTO_REVIEWS, params.reviewId);
+  if (!rev || rev.status !== "needs_admin") {
+    throw new AppError(ERROR_CODES.CAS_CONFLICT, "该审照单不在待仲裁状态");
+  }
+  const nextStatus: PhotoReviewDoc["status"] = params.approve ? "approved" : "rejected";
+  const tr = await transitionStatus(
+    db,
+    COLLECTIONS.PHOTO_REVIEWS,
+    rev._id,
+    PHOTO_REVIEW_STATUS_SPEC,
+    "needs_admin",
+    nextStatus,
+    rev.version,
+    () => ({ finalDecisionBy: params.adminUserId, decidedAt: now }),
+    now,
+  );
+  if (tr.moved && rev.scene === "shipment_qc") {
+    await applyShipmentQcDecision(db, rev.targetId, params.approve, now);
+  }
+  return { reviewStatus: nextStatus };
+}
+
 async function applyShipmentQcDecision(
   db: DbAdapter,
   packageId: string,

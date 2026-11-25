@@ -1,0 +1,39 @@
+<view class="lyric-page {{darkMode ? 'theme-oled' : 'theme-warm'}}">
+  <!-- 全屏斜向半透明防截屏水印层 -->
+  <view class="watermark-layer" aria-hidden="true">
+    <text wx:for="{{watermarks}}" wx:key="*this" class="watermark-item">{{watermarkText}}</text>
+  </view>
+
+  <!-- 上半屏留白避让区：专门避开右上角画中画悬浮视频小窗，仅在左上角放轻量信息与夜间切换 -->
+  <view class="top-pip-safe-zone">
+    <view class="part-pill">部件：{{currentPartName || '加载中'}}</view>
+    <view class="mode-toggle" bindtap="onToggleDarkMode">
+      {{darkMode ? '☀️ 暖白模式' : '🌙 OLED省电黑'}}
+    </view>
+    <view class="companion-tip">🎧 屏幕常亮已开启 · 不抢有声书/播客后台音频</view>
+  </view>
+
+  <!-- 下半屏核心歌词滚动与大拇指盲按区（占屏幕下方 58%） -->
+  <view class="lower-lyric-stage">
+    <view class="lyric-prev">
+      <text wx:if="{{prevStep}}">R{{prevStep.rowNo}} · {{prevStep.text}}</text>
+      <text wx:else>— 起始行 —</text>
+    </view>
+
+    <view class="lyric-current" data-delta="1" bindtap="onStepDelta">
+      <view class="row-badge">第 {{currStep.rowNo || 1}} 行</view>
+      <view class="row-formula">{{currStep.text || '暂无图解步骤'}}</view>
+      <view wx:if="{{currStep.stitchCount}}" class="row-stitches">本行结束共 {{currStep.stitchCount}} 针（轻点卡片进下一行）</view>
+    </view>
+
+    <view class="lyric-next">
+      <text wx:if="{{nextStep}}">下一行 R{{nextStep.rowNo}} · {{nextStep.text}}</text>
+      <text wx:else>🎉 当前部件最后一行</text>
+    </view>
+
+    <view class="thumb-controls">
+      <view class="btn-prev" data-delta="-1" bindtap="onStepDelta">上一行 -1</view>
+      <view class="btn-next-giant" data-delta="1" bindtap="onStepDelta">完成本行 · 下一行 +1</view>
+    </view>
+  </view>
+</view>

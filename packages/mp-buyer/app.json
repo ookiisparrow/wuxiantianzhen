@@ -1,0 +1,36 @@
+{
+  "pages": [
+    "pages/mall/index",
+    "pages/order/index",
+    "pages/volunteer/index",
+    "pages/deposit-cashier/index"
+  ],
+  "window": {
+    "navigationBarTitleText": "无限天真手作商城",
+    "navigationBarBackgroundColor": "#FFFDF9",
+    "navigationBarTextStyle": "black",
+    "backgroundColor": "#FFFDF9"
+  },
+  "tabBar": {
+    "color": "#7A746E",
+    "selectedColor": "#D96B43",
+    "backgroundColor": "#FFFFFF",
+    "borderStyle": "black",
+    "list": [
+      {
+        "pagePath": "pages/mall/index",
+        "text": "天真市集"
+      },
+      {
+        "pagePath": "pages/order/index",
+        "text": "我的订单"
+      },
+      {
+        "pagePath": "pages/volunteer/index",
+        "text": "粉丝陪审"
+      }
+    ]
+  },
+  "style": "v2",
+  "sitemapLocation": "sitemap.json"
+}

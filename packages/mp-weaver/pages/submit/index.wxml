@@ -1,0 +1,57 @@
+<view class="submit-page">
+  <!-- 制作中：三视角比例尺卡裸拍 -->
+  <view wx:if="{{status === 'making'}}" class="card">
+    <view class="sec-title">📸 第一步：三视角压比例尺卡裸拍（严禁提前封袋）</view>
+    <view class="sec-sub">粉丝陪审团盲审仅展示图片，不暴露工号；2 小时内极速出结果。</view>
+
+    <view class="slot-grid">
+      <view class="slot-box" data-slot="frontOnScaleCard" bindtap="onPickPhoto">
+        <text>{{frontOnScaleCard ? '✅ 已传正面尺卡照' : '+ 正面压比例尺卡'}}</text>
+      </view>
+      <view class="slot-box" data-slot="backStitch" bindtap="onPickPhoto">
+        <text>{{backStitch ? '✅ 已传背面收口照' : '+ 背面针目与收口'}}</text>
+      </view>
+      <view class="slot-box" data-slot="sidePlumpness" bindtap="onPickPhoto">
+        <text>{{sidePlumpness ? '✅ 已传侧面饱满照' : '+ 侧面塞棉饱满度'}}</text>
+      </view>
+    </view>
+
+    <!-- 高信用免审单一步合并封袋 -->
+    <view wx:if="{{reviewMode === 'skip'}}" class="skip-merge-box">
+      <view class="sec-title">⚡ 高信用免审直通：同步扫码封袋</view>
+      <view class="btn-ghost" bindtap="onScanBagQr">
+        {{bagStickerCode ? ('已绑袋码：' + bagStickerCode) : '📷 扫八边封袋唯一二维码'}}
+      </view>
+      <view class="slot-box single-slot" data-slot="sealedPhotoFileId" bindtap="onPickPhoto">
+        <text>{{sealedPhotoFileId ? '✅ 已传防拆封签照' : '+ 拍摄装袋封口贴码照'}}</text>
+      </view>
+    </view>
+
+    <view class="btn-primary submit-btn" bindtap="onSubmitBareWorkOrMerged">
+      {{reviewMode === 'skip' ? '一步提交 · 免审直通待发货' : '提交裸拍图 · 进入2h极速盲审'}}
+    </view>
+  </view>
+
+  <!-- 审照通过或余货复用直通：扫码装袋封签 -->
+  <view wx:if="{{status === 'awaiting_seal'}}" class="card">
+    <view class="sec-title">📦 审照已通过 / 余货复用：扫码贴袋待发</view>
+    <view class="btn-ghost scan-btn" bindtap="onScanBagQr">
+      {{bagStickerCode ? ('已绑袋码：' + bagStickerCode) : '📷 扫半透明八边封袋二维码贴纸'}}
+    </view>
+    <view class="slot-box single-slot" data-slot="sealedPhotoFileId" bindtap="onPickPhoto">
+      <text>{{sealedPhotoFileId ? '✅ 已传封口贴码照' : '+ 上传装袋封口贴码照'}}</text>
+    </view>
+
+    <view class="field-block">
+      <text class="field-label">乡镇驿站自寄运单号（上门揽收织女留空即可）：</text>
+      <input
+        class="text-input"
+        placeholder="仅乡镇自寄模式填写快递单号，系统免扣3元并补首重"
+        value="{{selfDropoffTrackingNo}}"
+        bindinput="onInputTracking"
+      />
+    </view>
+
+    <view class="btn-primary submit-btn" bindtap="onSealPostApproval">确认封袋 · 推送待发货</view>
+  </view>
+</view>

@@ -1,0 +1,15 @@
+{
+  "description": "无限天真·织女端小程序项目配置（部署前替换为真实 AppID）",
+  "miniprogramRoot": "./",
+  "compileType": "miniprogram",
+  "appid": "wxtz-mp-weaver-placeholder",
+  "projectname": "wxtz-mp-weaver",
+  "setting": {
+    "urlCheck": true,
+    "es6": true,
+    "enhance": true,
+    "postcss": true,
+    "minified": true,
+    "useCompilerPlugins": ["typescript"]
+  }
+}

@@ -1,0 +1,48 @@
+<view class="funnel-page">
+  <view class="card">
+    <view class="stage-bar">当前认证阶段：{{funnelStage}}</view>
+    <view class="stage-desc">首期面向【江浙沪同心圆大区】招募长期手作伙伴 · 平台零抽佣，作品净价归手艺人。</view>
+  </view>
+
+  <!-- Step 1: 海选与作品集 -->
+  <view wx:if="{{funnelStage === 'apply_entry'}}" class="card">
+    <view class="sec-title">① 地区核验 + 8题常识测验 + 3张历史作品</view>
+    <picker mode="region" bindchange="onRegionChange">
+      <view class="picker-box">当前常住地：{{province}} · {{city}}（点击切换）</view>
+    </picker>
+    <view class="btn-ghost upload-btn" bindtap="onUploadPortfolio">
+      {{portfolioPhotoFileIds.length >= 3 ? ('✅ 已选 ' + portfolioPhotoFileIds.length + ' 张作品照') : '+ 上传 3 张个人代表作照片'}}
+    </view>
+    <view class="btn-primary" bindtap="onSubmitStep1">提交海选与初筛</view>
+
+    <view class="divider"></view>
+    <view class="ack-row" bindtap="onToggleDepositAck">
+      <text>{{ackDepositNotice ? '☑️' : '⬜'}} 我已知晓：指定考级小样寄样合格后，需缴付 ¥200.00 合作履约保证金（无未结清订单随时可全额退还）方可正式接单。</text>
+    </view>
+    <view class="btn-ghost" bindtap="onUnlockExamSample">初筛通过后 · 解锁非售卖考级小样</view>
+  </view>
+
+  <!-- Step 2 & 3: 试钩非售卖考级小样 & 自费寄样实检 -->
+  <view wx:elif="{{funnelStage === 'trial_make' || funnelStage === 'sample_inspect'}}" class="card">
+    <view class="sec-title">②/③ 指定非售卖考级小样：{{examSampleCode}}</view>
+    <view class="stage-desc">
+      请使用家常4股棉完成考级小样（非商品款，仅作针目与松紧度考察），拍照过审后自费寄至平台质检点（最多1次补寄机会）。
+    </view>
+  </view>
+
+  <!-- Step 4: 待缴 200 元合作履约保证金 -->
+  <view wx:elif="{{funnelStage === 'pending_deposit'}}" class="card">
+    <view class="sec-title">④ 实物考级已通过！请缴付 ¥200.00 合作保证金</view>
+    <view class="stage-desc">
+      保证金专户挂账（LIAB_WEAVER_DEPOSIT），平台绝不挪作收入；停止合作且无未完结订单时全额原路退还。
+    </view>
+    <view class="btn-primary pay-btn" bindtap="onJumpToDepositCashier">
+      跳转无限天真收银台支付 ¥200.00
+    </view>
+  </view>
+
+  <view wx:elif="{{funnelStage === 'approved'}}" class="card">
+    <view class="sec-title">🎉 已正式认证通过！</view>
+    <view class="stage-desc">欢迎加入无限天真云端工坊，请前往「接单台」查看派单与常备12色线材库。</view>
+  </view>
+</view>

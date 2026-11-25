@@ -1,0 +1,42 @@
+<view class="mall-page">
+  <view class="card hero-card">
+    <view class="hero-title">无限天真 · 想让世界好一点点</view>
+    <view class="hero-sub">零抽佣云端手作工坊 · 每一件摆件/挂件背后都是一位从容创作的手艺人</view>
+  </view>
+
+  <view class="tabs">
+    <view
+      class="tab-item {{tab === 'made_to_order' ? 'tab-active' : ''}}"
+      data-tab="made_to_order"
+      bindtap="onSwitchTab"
+    >手艺人现钩（3–5天发）</view>
+    <view
+      class="tab-item {{tab === 'ready_stock' ? 'tab-active' : ''}}"
+      data-tab="ready_stock"
+      bindtap="onSwitchTab"
+    >48小时闪发余货专区</view>
+  </view>
+
+  <block wx:for="{{products}}" wx:key="_id">
+    <view wx:if="{{item.saleType === tab}}" class="card prod-card">
+      <view class="prod-header">
+        <text class="prod-name">{{item.title || item.skuCode}}</text>
+        <text wx:if="{{item.saleType === 'ready_stock'}}" class="pill-fast">现货 48 小时内发出</text>
+        <text wx:else class="pill-craft">下单后 3–5 天内发出</text>
+      </view>
+
+      <view class="prod-footer">
+        <view>
+          <text class="prod-price">¥{{item.priceYuan}}</text>
+          <text class="prod-cap"> · 当前可接 {{item.availableUnits}} 件</text>
+        </view>
+        <view
+          class="{{item.sellable ? 'btn-primary' : 'btn-disabled'}}"
+          data-id="{{item._id}}"
+          data-sellable="{{item.sellable}}"
+          bindtap="onBuyProduct"
+        >{{item.sellable ? '立即结缘' : '暂时售罄 · 到货提醒'}}</view>
+      </view>
+    </view>
+  </block>
+</view>

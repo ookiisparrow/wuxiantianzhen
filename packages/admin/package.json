@@ -2,5 +2,6 @@
   "name": "@wxtz/admin",
   "version": "0.1.0",
   "private": true,
-  "description": "无限天真运营 Web 后台（Vue 3 + Vite）"
+  "type": "module",
+  "description": "无限天真·运营总控 Web 后台 (admin)"
 }

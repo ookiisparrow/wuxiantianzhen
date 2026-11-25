@@ -1,0 +1,13 @@
+{
+  "desc": "允许索引商城首页，隐藏织女保证金收银台页",
+  "rules": [
+    {
+      "action": "disallow",
+      "page": "pages/deposit-cashier/index"
+    },
+    {
+      "action": "allow",
+      "page": "*"
+    }
+  ]
+}

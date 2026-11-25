@@ -1,0 +1,83 @@
+<view class="workbench">
+  <view class="card summary-card">
+    <view class="summary-header">
+      <text class="weaver-no">工号：{{weaverNo}}</text>
+      <text class="deposit-tag">履约保证金 ¥{{depositYuan}}（随时可退）</text>
+    </view>
+    <view class="metrics-row">
+      <view class="metric">
+        <text class="metric-label">待结净工价（元）</text>
+        <text class="metric-val">¥{{payableYuan}}</text>
+      </view>
+      <view class="metric">
+        <text class="metric-label">免费领线池额度（元）</text>
+        <text class="metric-val">¥{{yarnPoolYuan}}</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- 50g 累计耗线自动触发：整团余线一键核对弹窗 -->
+  <view wx:if="{{skeinCheckItem}}" class="card check-card">
+    <view class="check-title">🧶 累计耗线满 50g · 整团余线快速校准</view>
+    <view class="check-desc">请核对手头【{{skeinCheckItem.yarnCode}}】剩余【未拆封整团数】：</view>
+    <view class="stepper">
+      <view class="step-btn" data-delta="-1" bindtap="onAdjustReportedSkeins">-</view>
+      <text class="step-num">{{reportedSkeins}} 团</text>
+      <view class="step-btn" data-delta="1" bindtap="onAdjustReportedSkeins">+</view>
+    </view>
+    <view class="btn-primary" bindtap="onConfirmSkeinCheck">确认校准（清零手劲误差）</view>
+  </view>
+
+  <view wx:if="{{packages.length === 0}}" class="card empty-card">
+    <text>当前暂无派单包裹，保持「接单中」即可自动接收同城/江浙沪优先派单 ✨</text>
+  </view>
+
+  <block wx:for="{{packages}}" wx:key="_id">
+    <view class="card pkg-card">
+      <view class="pkg-top">
+        <text class="pkg-id">包裹 {{item._id}}</text>
+        <text wx:if="{{item.status === 'offered'}}" class="badge badge-warn">待接单邀约（1h有效）</text>
+        <text wx:elif="{{item.queueSeq === 1}}" class="badge badge-head">队首 #1 · 当前制作中</text>
+        <text wx:elif="{{item.queueSeq > 1}}" class="badge badge-queue">排队 #{{item.queueSeq}} · 顺位锁定</text>
+        <text wx:else class="badge badge-head">{{item.status}}</text>
+      </view>
+
+      <view class="pkg-items">
+        <view wx:for="{{item.itemsSnapshot}}" wx:for-item="sku" wx:key="skuCode" class="sku-row">
+          <text>{{sku.skuName}} × {{sku.qty}}</text>
+          <text class="sku-min">标准工时 {{sku.standardMin}} 分钟</text>
+        </view>
+      </view>
+
+      <!-- 待接单操作 -->
+      <view wx:if="{{item.status === 'offered'}}" class="action-row">
+        <view class="btn-ghost" data-id="{{item._id}}" data-decision="reject" bindtap="onRespondOffer">暂不接单</view>
+        <view class="btn-primary" data-id="{{item._id}}" data-decision="accept" bindtap="onRespondOffer">接单入列</view>
+      </view>
+
+      <!-- 队首制作中操作：仅 queueSeq === 1 可打开歌词图解 -->
+      <view wx:elif="{{item.status === 'making' && item.queueSeq === 1}}" class="action-row">
+        <view class="btn-ghost" data-id="{{item._id}}" bindtap="onVoluntaryRelease">12h无责转单</view>
+        <view class="btn-ghost" data-id="{{item._id}}" bindtap="onOpenHeadPattern">打开歌词图解</view>
+        <view
+          class="btn-primary"
+          data-id="{{item._id}}"
+          data-status="{{item.status}}"
+          data-reviewmode="{{item.reviewMode}}"
+          bindtap="onOpenSubmit"
+        >完工交片</view>
+      </view>
+
+      <!-- 审照通过或余货直通：扫码贴袋封签 -->
+      <view wx:elif="{{item.status === 'awaiting_seal'}}" class="action-row">
+        <view
+          class="btn-primary"
+          data-id="{{item._id}}"
+          data-status="awaiting_seal"
+          data-reviewmode="{{item.reviewMode}}"
+          bindtap="onOpenSubmit"
+        >扫码贴袋 · 封签待发</view>
+      </view>
+    </view>
+  </block>
+</view>
