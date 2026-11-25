@@ -8,6 +8,8 @@ import {
   asNonNegativeFen,
   DISPATCH_OFFER_STATUS_SPEC,
   ORDER_PACKAGE_STATUS_SPEC,
+  SHIPMENT_STATUS_SPEC,
+  canTransition,
   type DispatchOfferDoc,
   type Fen,
   type ExternalOrderIndexDoc,
@@ -20,6 +22,7 @@ import {
 import type { DbAdapter } from "../kit/db.ts";
 import { dispatchOfferId, externalOrderIndexId, newOrderId, newPackageId, shipmentId } from "../kit/ids.ts";
 import { compactWeaverQueue } from "../kit/queue.ts";
+import { updateWeaverSpeedFactorOnShipped } from "../kit/speed.ts";
 import { registerCancelledPackageToWeaverStock } from "../kit/stockLock.ts";
 import { transitionStatus } from "../kit/transition.ts";
 
@@ -352,13 +355,30 @@ export async function commitDouyinImport(
         );
         if (tr.moved) {
           shippedUpdated++;
+          await updateWeaverSpeedFactorOnShipped(db, pkg, now);
           const sId = shipmentId(pkg._id);
           const curShip = await db.get<ShipmentDoc>(COLLECTIONS.SHIPMENTS, sId);
-          if (curShip) {
-            await db.put<ShipmentDoc>(COLLECTIONS.SHIPMENTS, {
-              ...curShip,
+          if (curShip && canTransition(SHIPMENT_STATUS_SPEC, curShip.status, "in_transit")) {
+            await transitionStatus(
+              db,
+              COLLECTIONS.SHIPMENTS,
+              curShip._id,
+              SHIPMENT_STATUS_SPEC,
+              curShip.status,
+              "in_transit",
+              curShip.version,
+              () => ({ trackingNo: r.trackingNo!.trim() }),
+              now,
+            );
+          } else if (!curShip) {
+            await db.insert<ShipmentDoc>(COLLECTIONS.SHIPMENTS, {
+              _id: sId,
+              packageId: pkg._id,
+              fulfillMode: "douyin_erp",
               trackingNo: r.trackingNo.trim(),
+              pickupRetryCount: 0,
               status: "in_transit",
+              version: 1,
               updatedAt: now,
             });
           }
@@ -381,7 +401,32 @@ export async function commitDouyinImport(
           }),
           now,
         );
-        if (tr.moved) signedUpdated++;
+        if (tr.moved) {
+          signedUpdated++;
+          const sId = shipmentId(freshPkg._id);
+          const curShip = await db.get<ShipmentDoc>(COLLECTIONS.SHIPMENTS, sId);
+          if (curShip && canTransition(SHIPMENT_STATUS_SPEC, curShip.status, "signed")) {
+            await transitionStatus(
+              db,
+              COLLECTIONS.SHIPMENTS,
+              curShip._id,
+              SHIPMENT_STATUS_SPEC,
+              curShip.status,
+              "signed",
+              curShip.version,
+              undefined,
+              now,
+            );
+          }
+          for (const ordId of freshPkg.orderIds) {
+            await db.atomicUpdate<OrderDoc>(
+              COLLECTIONS.ORDERS,
+              ordId,
+              (o) => o.status === "paid",
+              (o) => ({ ...o, status: "fulfilled", updatedAt: now }),
+            );
+          }
+        }
       }
       continue;
     }
@@ -535,4 +580,162 @@ export async function commitDouyinImport(
     shippedUpdated,
     signedUpdated,
   };
+}
+
+export interface DouyinLogisticsCsvRow {
+  externalOrderId: string;
+  trackingNo?: string;
+  carrierCode?: string;
+  signedAtMs?: number;
+}
+
+/**
+ * Dedicated Douyin ERP / online-shipping waybill & signoff CSV back-import (`docs/07` §4.1 & §5.1).
+ * Idempotently advances `ready_to_ship -> shipped` (recording `trackingNo` + smoothing `speedFactor`)
+ * and `shipped -> signed` (`settleEligibleAt = signedAtMs + 7d`, marking `orders.status = 'fulfilled'`).
+ */
+export async function importDouyinLogisticsCsv(
+  db: DbAdapter,
+  params: {
+    rows: readonly DouyinLogisticsCsvRow[];
+    nowUtcMs?: number;
+  },
+): Promise<{ shippedUpdated: number; signedUpdated: number; notFoundIds: string[] }> {
+  const now = params.nowUtcMs ?? Date.now();
+  const blockingErrors: string[] = [];
+
+  for (let i = 0; i < params.rows.length; i++) {
+    const r = params.rows[i]!;
+    const extId = String(r.externalOrderId ?? "").trim();
+    if (!extId || SCIENTIFIC_NOTATION_RE.test(extId) || /e\+/i.test(extId)) {
+      blockingErrors.push(`物流回导表第 ${i + 1} 行订单号疑似科学计数法或为空：${r.externalOrderId}`);
+    }
+    if (r.signedAtMs !== undefined && (!Number.isSafeInteger(r.signedAtMs) || r.signedAtMs <= 0)) {
+      blockingErrors.push(`物流回导表第 ${i + 1} 行签收时间戳非法：${r.signedAtMs}`);
+    }
+  }
+  if (blockingErrors.length > 0) {
+    throw new AppError(ERROR_CODES.VALIDATION_ERROR, blockingErrors.join("；"), { errors: blockingErrors });
+  }
+
+  let shippedUpdated = 0;
+  let signedUpdated = 0;
+  const notFoundIds: string[] = [];
+
+  for (const r of params.rows) {
+    const extId = r.externalOrderId.trim();
+    const idx = await db.get<ExternalOrderIndexDoc>(
+      COLLECTIONS.EXTERNAL_ORDER_INDEX,
+      externalOrderIndexId("douyin_online", extId),
+    );
+    if (!idx) {
+      notFoundIds.push(extId);
+      continue;
+    }
+
+    const pkg = await db.get<OrderPackageDoc>(COLLECTIONS.ORDER_PACKAGES, idx.packageId);
+    if (!pkg) {
+      notFoundIds.push(extId);
+      continue;
+    }
+
+    const cleanTracking = r.trackingNo?.trim();
+    const cleanCarrier = r.carrierCode?.trim();
+    const sId = shipmentId(pkg._id);
+
+    if ((cleanTracking || r.signedAtMs) && pkg.status === "ready_to_ship") {
+      const tr = await transitionStatus(
+        db,
+        COLLECTIONS.ORDER_PACKAGES,
+        pkg._id,
+        ORDER_PACKAGE_STATUS_SPEC,
+        "ready_to_ship",
+        "shipped",
+        pkg.version,
+        () => ({ shippedAt: now }),
+        now,
+      );
+      if (tr.moved) {
+        shippedUpdated++;
+        await updateWeaverSpeedFactorOnShipped(db, pkg, now);
+        const curShip = await db.get<ShipmentDoc>(COLLECTIONS.SHIPMENTS, sId);
+        if (!curShip) {
+          await db.insert<ShipmentDoc>(COLLECTIONS.SHIPMENTS, {
+            _id: sId,
+            packageId: pkg._id,
+            fulfillMode: "douyin_erp",
+            trackingNo: cleanTracking,
+            carrierCode: cleanCarrier,
+            pickupRetryCount: 0,
+            status: "in_transit",
+            version: 1,
+            updatedAt: now,
+          });
+        } else if (canTransition(SHIPMENT_STATUS_SPEC, curShip.status, "in_transit")) {
+          await transitionStatus(
+            db,
+            COLLECTIONS.SHIPMENTS,
+            curShip._id,
+            SHIPMENT_STATUS_SPEC,
+            curShip.status,
+            "in_transit",
+            curShip.version,
+            () => ({
+              trackingNo: cleanTracking ?? curShip.trackingNo,
+              carrierCode: cleanCarrier ?? curShip.carrierCode,
+            }),
+            now,
+          );
+        }
+      }
+    }
+
+    const freshPkg = await db.get<OrderPackageDoc>(COLLECTIONS.ORDER_PACKAGES, pkg._id);
+    if (r.signedAtMs && freshPkg && freshPkg.status === "shipped") {
+      const tr = await transitionStatus(
+        db,
+        COLLECTIONS.ORDER_PACKAGES,
+        freshPkg._id,
+        ORDER_PACKAGE_STATUS_SPEC,
+        "shipped",
+        "signed",
+        freshPkg.version,
+        () => ({
+          signedAt: r.signedAtMs,
+          settleEligibleAt: r.signedAtMs! + 7 * DAY_MS,
+        }),
+        now,
+      );
+      if (tr.moved) {
+        signedUpdated++;
+        const shipBeforeSign = await db.get<ShipmentDoc>(COLLECTIONS.SHIPMENTS, sId);
+        if (shipBeforeSign && canTransition(SHIPMENT_STATUS_SPEC, shipBeforeSign.status, "signed")) {
+          await transitionStatus(
+            db,
+            COLLECTIONS.SHIPMENTS,
+            shipBeforeSign._id,
+            SHIPMENT_STATUS_SPEC,
+            shipBeforeSign.status,
+            "signed",
+            shipBeforeSign.version,
+            () => ({
+              trackingNo: cleanTracking ?? shipBeforeSign.trackingNo,
+              carrierCode: cleanCarrier ?? shipBeforeSign.carrierCode,
+            }),
+            now,
+          );
+        }
+        for (const ordId of freshPkg.orderIds) {
+          await db.atomicUpdate<OrderDoc>(
+            COLLECTIONS.ORDERS,
+            ordId,
+            (o) => o.status === "paid",
+            (o) => ({ ...o, status: "fulfilled", updatedAt: now }),
+          );
+        }
+      }
+    }
+  }
+
+  return { shippedUpdated, signedUpdated, notFoundIds };
 }

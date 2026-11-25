@@ -117,3 +117,12 @@ export function calculateBomMaterialCost(
     totalMaterialCostFen: addFen(yarnCostFen, extraAccessoryCostFen),
   };
 }
+
+export function computeStyleMaterialCostFen(
+  yarnBom: readonly YarnBomEntry[],
+  catalog: Readonly<Record<string, YarnPriceSpec>>,
+  wasteRateBp: number = 1000,
+  extraAccessoryCostFen: Fen = ZERO_FEN,
+): Fen {
+  return calculateBomMaterialCost(yarnBom, catalog, wasteRateBp, extraAccessoryCostFen).totalMaterialCostFen;
+}

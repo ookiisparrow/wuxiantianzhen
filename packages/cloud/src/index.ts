@@ -6,6 +6,7 @@ export * from "./kit/auth.ts";
 export * from "./kit/yarnInventory.ts";
 export * from "./kit/stockLock.ts";
 export * from "./kit/queue.ts";
+export * from "./kit/speed.ts";
 
 export * from "./ports/index.ts";
 
@@ -15,6 +16,8 @@ export * from "./services/fulfillment.ts";
 export * from "./services/supplyAndPayout.ts";
 export * from "./services/funnel.ts";
 export * from "./services/buyerMall.ts";
+export * from "./services/catalogAdmin.ts";
+export * from "./services/governance.ts";
 
 export * from "./runtime/wxCloudAdapter.ts";
 export * from "./runtime/adminJwt.ts";

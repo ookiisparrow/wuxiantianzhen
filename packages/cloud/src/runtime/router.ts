@@ -15,6 +15,8 @@ import {
   type RegionCode,
   type StyleDoc,
   type StyleEnrollmentDoc,
+  type SystemConfigDoc,
+  type TicketDoc,
   type UserDoc,
   type WeaverAccountDoc,
   type WeaverStockDoc,
@@ -37,22 +39,35 @@ import {
   resolvePendingRefundByAdmin,
 } from "../services/buyerMall.ts";
 import {
+  generateBagStickerBatch,
+  getSystemConfig,
+  reassignManualHoldPackage,
+  upsertPattern,
+  upsertPatternModule,
+  upsertProduct,
+  upsertStyleWithBom,
+  upsertSystemConfig,
+  upsertYarnCatalogItem,
+} from "../services/catalogAdmin.ts";
+import {
   dispatchPoolTick,
   getHeadPatternForWeaver,
   releaseMakingOrderVoluntarily,
   respondDispatchOffer,
   sweepOffersAndStalledPackages,
 } from "../services/dispatch.ts";
-import { commitDouyinImport, previewDouyinImport } from "../services/douyinCsv.ts";
+import { commitDouyinImport, importDouyinLogisticsCsv, previewDouyinImport } from "../services/douyinCsv.ts";
 import {
   activateFanVolunteerAfterExam,
   adminArbitratePhotoReview,
   castVolunteerVote,
   getBlindReviewCardForVolunteer,
+  handleKuaidi100Webhook,
   sealAndSubmitShipment,
   submitFinishedWork,
   sweepPhotoReviewSla,
   sweepSettleEligiblePackages,
+  sweepUnscheduledMpPickups,
 } from "../services/fulfillment.ts";
 import {
   completeDepositAndApproveWeaver,
@@ -61,6 +76,18 @@ import {
   recordPhysicalSampleInspection,
   submitFunnelEntryStep1,
 } from "../services/funnel.ts";
+import {
+  computeCurrentMonthSalesFen,
+  listTickets,
+  replyAndResolveTicket,
+  requestWeaverExitAndRefundDeposit,
+  runDailyDueAndStockAlerts,
+  runWeeklyGovernance,
+  setWeaverOrderAcceptance,
+  submitTicket,
+  subscribeProductRestockReminder,
+  sweepOfferPreExpirySmsReminders,
+} from "../services/governance.ts";
 import {
   cancelWeeklyYarnClaim,
   confirmSettlementBatchPaid,
@@ -111,12 +138,17 @@ function assertNotMiniProgramClient(ctx: CloudRequestContext): void {
   }
 }
 
+function assertCronCaller(ctx: CloudRequestContext, nowUtcMs: number): void {
+  assertNotMiniProgramClient(ctx);
+  if (ctx.invocationSource === "http_gateway") {
+    verifyAdminJwt(ctx.adminToken, ctx.adminJwtSecret, nowUtcMs);
+  }
+}
+
 async function getServerRecruitRegions(db: DbAdapter): Promise<readonly RegionCode[]> {
-  const cfg = await db.get<{ _id: string; activeRecruitRegions?: RegionCode[] }>(
-    COLLECTIONS.SYSTEM_CONFIG,
-    "recruit",
-  );
-  return cfg?.activeRecruitRegions && cfg.activeRecruitRegions.length > 0 ? cfg.activeRecruitRegions : ["jzh"];
+  const cfg = await db.get<SystemConfigDoc>(COLLECTIONS.SYSTEM_CONFIG, "recruit");
+  const raw = cfg?.activeRecruitRegions ?? (cfg?.value as Record<string, unknown> | undefined)?.activeRecruitRegions;
+  return Array.isArray(raw) && raw.length > 0 ? (raw as RegionCode[]) : ["jzh"];
 }
 
 async function upsertUserAddress(
@@ -237,6 +269,33 @@ export async function dispatchCloudAction(
         });
         return { ok: true, data: res };
       }
+      case "weaver.getPatternSignedUrl": {
+        const u = await requireMiniProgramUser(ctx, "mp-weaver");
+        const head = await getHeadPatternForWeaver(ctx.db, {
+          packageId: String(payload.packageId),
+          weaverId: u._id,
+          skuCode: payload.skuCode ? String(payload.skuCode) : undefined,
+          nowUtcMs: now,
+        });
+        const signedUrls: Record<string, string> = {};
+        for (const pat of head.patterns) {
+          for (const part of pat.parts) {
+            for (const step of part.steps) {
+              if (step.imageFileId) {
+                signedUrls[step.imageFileId] =
+                  `https://tcb-ephemeral.wxtz.local/${encodeURIComponent(step.imageFileId)}?exp=${head.urlExpiresAt}&wm=${encodeURIComponent(head.watermarkText)}`;
+              }
+            }
+          }
+        }
+        return {
+          ok: true,
+          data: {
+            ...head,
+            signedUrls,
+          },
+        };
+      }
       case "weaver.releaseOrder": {
         const u = await requireMiniProgramUser(ctx, "mp-weaver");
         const res = await releaseMakingOrderVoluntarily(ctx.db, {
@@ -273,6 +332,7 @@ export async function dispatchCloudAction(
           selfDropoffTrackingNo: trackingNo,
           standardSelfShipReimbFen:
             u.shippingMode === "self_dropoff" && trackingNo ? DEFAULT_SELF_SHIP_REIMB_FEN : undefined,
+          logisticsPort: ctx.ports.logistics,
           nowUtcMs: now,
         });
         return { ok: true, data: res };
@@ -300,6 +360,7 @@ export async function dispatchCloudAction(
           pickupWindow: payload.pickupWindow,
           selfDropoffTrackingNo: trackingNo,
           standardSelfShipReimbFen: serverReimbFen,
+          logisticsPort: ctx.ports.logistics,
           nowUtcMs: now,
         });
         return { ok: true, data: res };
@@ -381,6 +442,61 @@ export async function dispatchCloudAction(
           requireApprovedPortfolio: true,
           nowUtcMs: now,
         });
+        return { ok: true, data: res };
+      }
+      case "weaver.setAcceptingOrders": {
+        const u = await requireMiniProgramUser(ctx, "mp-weaver");
+        const res = await setWeaverOrderAcceptance(ctx.db, {
+          weaverId: u._id,
+          acceptingOrders: Boolean(payload.acceptingOrders),
+          pauseUntil: payload.pauseUntil !== undefined ? Number(payload.pauseUntil) : undefined,
+          restDays: payload.restDays,
+          nowUtcMs: now,
+        });
+        return { ok: true, data: res };
+      }
+      case "weaver.requestDepositExit": {
+        const u = await requireMiniProgramUser(ctx, "mp-weaver");
+        const res = await requestWeaverExitAndRefundDeposit(ctx.db, {
+          weaverId: u._id,
+          paymentPort: ctx.ports.payment,
+          nowUtcMs: now,
+        });
+        return { ok: true, data: res };
+      }
+      case "weaver.submitTicket": {
+        const u = await requireMiniProgramUser(ctx, "mp-weaver");
+        const photoIds: string[] = Array.isArray(payload.photoFileIds) ? payload.photoFileIds.map(String) : [];
+        for (const fid of photoIds) {
+          if (fid) {
+            await ctx.ports.contentSec.submitImageCheckAsync({
+              openid: ctx.openid ?? "",
+              mediaUrl: fid,
+              scene: 2,
+            });
+          }
+        }
+        const safeText = await ctx.ports.contentSec.checkTextSafe({
+          openid: ctx.openid ?? "",
+          content: String(payload.content ?? ""),
+        });
+        if (!safeText.pass) {
+          throw new AppError(ERROR_CODES.VALIDATION_ERROR, "反馈内容包含违规敏感信息");
+        }
+        const res = await submitTicket(ctx.db, {
+          userId: u._id,
+          role: "weaver",
+          type: payload.type ?? "other",
+          relatedId: payload.relatedId,
+          content: String(payload.content ?? ""),
+          photoFileIds: photoIds,
+          nowUtcMs: now,
+        });
+        return { ok: true, data: res };
+      }
+      case "weaver.myTickets": {
+        const u = await requireMiniProgramUser(ctx, "mp-weaver");
+        const res = await listTickets(ctx.db, { userId: u._id, role: "weaver" });
         return { ok: true, data: res };
       }
 
@@ -500,6 +616,50 @@ export async function dispatchCloudAction(
           paymentPort: ctx.ports.payment,
           nowUtcMs: now,
         });
+        return { ok: true, data: res };
+      }
+      case "buyer.subscribeRestock": {
+        const u = await requireMiniProgramUser(ctx, "mp-buyer");
+        const res = await subscribeProductRestockReminder(ctx.db, {
+          userId: u._id,
+          productId: String(payload.productId),
+          nowUtcMs: now,
+        });
+        return { ok: true, data: res };
+      }
+      case "buyer.submitTicket": {
+        const u = await requireMiniProgramUser(ctx, "mp-buyer");
+        const photoIds: string[] = Array.isArray(payload.photoFileIds) ? payload.photoFileIds.map(String) : [];
+        for (const fid of photoIds) {
+          if (fid) {
+            await ctx.ports.contentSec.submitImageCheckAsync({
+              openid: ctx.openid ?? "",
+              mediaUrl: fid,
+              scene: 2,
+            });
+          }
+        }
+        const safeText = await ctx.ports.contentSec.checkTextSafe({
+          openid: ctx.openid ?? "",
+          content: String(payload.content ?? ""),
+        });
+        if (!safeText.pass) {
+          throw new AppError(ERROR_CODES.VALIDATION_ERROR, "反馈内容包含违规敏感信息");
+        }
+        const res = await submitTicket(ctx.db, {
+          userId: u._id,
+          role: "buyer",
+          type: payload.type ?? "after_sale",
+          relatedId: payload.relatedId,
+          content: String(payload.content ?? ""),
+          photoFileIds: photoIds,
+          nowUtcMs: now,
+        });
+        return { ok: true, data: res };
+      }
+      case "buyer.myTickets": {
+        const u = await requireMiniProgramUser(ctx, "mp-buyer");
+        const res = await listTickets(ctx.db, { userId: u._id, role: "buyer" });
         return { ok: true, data: res };
       }
 
@@ -755,16 +915,171 @@ export async function dispatchCloudAction(
         });
         return { ok: true, data: res };
       }
+      case "admin.importDouyinLogistics": {
+        const adm = verifyAdminJwt(ctx.adminToken, ctx.adminJwtSecret, now);
+        const res = await importDouyinLogisticsCsv(ctx.db, {
+          rows: payload.rows ?? [],
+          nowUtcMs: now,
+        });
+        await recordAdminAudit(ctx.db, {
+          actorUserId: adm.sub,
+          action: "importDouyinLogistics",
+          summary: `回导抖店ERP物流运单：发货更新 ${res.shippedUpdated} 单，签收更新 ${res.signedUpdated} 单`,
+          nowUtcMs: now,
+        });
+        return { ok: true, data: res };
+      }
+      case "admin.upsertYarn": {
+        const adm = verifyAdminJwt(ctx.adminToken, ctx.adminJwtSecret, now);
+        const res = await upsertYarnCatalogItem(ctx.db, payload as YarnCatalogDoc);
+        await recordAdminAudit(ctx.db, {
+          actorUserId: adm.sub,
+          action: "upsertYarn",
+          targetId: res._id,
+          summary: `维护线材/辅料目录 ${res._id} (${res.name})`,
+          nowUtcMs: now,
+        });
+        return { ok: true, data: res };
+      }
+      case "admin.upsertPatternModule": {
+        const adm = verifyAdminJwt(ctx.adminToken, ctx.adminJwtSecret, now);
+        const res = await upsertPatternModule(ctx.db, payload as any, now);
+        await recordAdminAudit(ctx.db, {
+          actorUserId: adm.sub,
+          action: "upsertPatternModule",
+          targetId: res._id,
+          summary: `维护可拼装图解部件 ${res._id} (${res.name})`,
+          nowUtcMs: now,
+        });
+        return { ok: true, data: res };
+      }
+      case "admin.upsertPattern": {
+        const adm = verifyAdminJwt(ctx.adminToken, ctx.adminJwtSecret, now);
+        const res = await upsertPattern(ctx.db, payload as any, now);
+        await recordAdminAudit(ctx.db, {
+          actorUserId: adm.sub,
+          action: "upsertPattern",
+          targetId: res._id,
+          summary: `维护歌词式图解 ${res._id} (款号 ${res.skuCode})`,
+          nowUtcMs: now,
+        });
+        return { ok: true, data: res };
+      }
+      case "admin.upsertStyle": {
+        const adm = verifyAdminJwt(ctx.adminToken, ctx.adminJwtSecret, now);
+        const res = await upsertStyleWithBom(ctx.db, payload as any);
+        await recordAdminAudit(ctx.db, {
+          actorUserId: adm.sub,
+          action: "upsertStyle",
+          targetId: res._id,
+          summary: `维护款式与克重BOM ${res._id} (材料费 ${res.materialCostFen} 分 / 计提 ${res.yarnPoolAccrualFen} 分)`,
+          nowUtcMs: now,
+        });
+        return { ok: true, data: res };
+      }
+      case "admin.upsertProduct": {
+        const adm = verifyAdminJwt(ctx.adminToken, ctx.adminJwtSecret, now);
+        const res = await upsertProduct(ctx.db, payload as any, now);
+        await recordAdminAudit(ctx.db, {
+          actorUserId: adm.sub,
+          action: "upsertProduct",
+          targetId: res._id,
+          summary: `维护上架商品 ${res._id} (${res.title})`,
+          nowUtcMs: now,
+        });
+        return { ok: true, data: res };
+      }
+      case "admin.generateBagStickers": {
+        const adm = verifyAdminJwt(ctx.adminToken, ctx.adminJwtSecret, now);
+        const res = await generateBagStickerBatch(ctx.db, {
+          weaverId: String(payload.weaverId),
+          batchId: String(payload.batchId),
+          codes: payload.codes ?? [],
+        });
+        await recordAdminAudit(ctx.db, {
+          actorUserId: adm.sub,
+          action: "generateBagStickers",
+          targetId: String(payload.batchId),
+          summary: `为织女 ${payload.weaverId} 生成封袋贴纸批次 ${payload.batchId} (${res.createdCount} 张)`,
+          nowUtcMs: now,
+        });
+        return { ok: true, data: res };
+      }
+      case "admin.setConfig": {
+        const adm = verifyAdminJwt(ctx.adminToken, ctx.adminJwtSecret, now);
+        const res = await upsertSystemConfig(ctx.db, String(payload.key), payload.value ?? {}, adm.sub, now);
+        await recordAdminAudit(ctx.db, {
+          actorUserId: adm.sub,
+          action: "setConfig",
+          targetId: res._id,
+          summary: `更新系统动态配置项 ${res._id}`,
+          nowUtcMs: now,
+        });
+        return { ok: true, data: res };
+      }
+      case "admin.getConfig": {
+        verifyAdminJwt(ctx.adminToken, ctx.adminJwtSecret, now);
+        const res = await getSystemConfig(ctx.db, String(payload.key));
+        return { ok: true, data: res };
+      }
+      case "admin.reassignManualHold": {
+        const adm = verifyAdminJwt(ctx.adminToken, ctx.adminJwtSecret, now);
+        const res = await reassignManualHoldPackage(ctx.db, {
+          packageId: String(payload.packageId),
+          targetWeaverId: payload.targetWeaverId ? String(payload.targetWeaverId) : undefined,
+          nowUtcMs: now,
+        });
+        await recordAdminAudit(ctx.db, {
+          actorUserId: adm.sub,
+          action: "reassignManualHold",
+          targetId: res.package._id,
+          summary: payload.targetWeaverId
+            ? `异常包裹 ${res.package._id} 定向改派给织女 ${payload.targetWeaverId}`
+            : `异常包裹 ${res.package._id} 重置回公共派单池`,
+          nowUtcMs: now,
+        });
+        return { ok: true, data: res };
+      }
+      case "admin.listTickets": {
+        verifyAdminJwt(ctx.adminToken, ctx.adminJwtSecret, now);
+        const res = await listTickets(ctx.db, {
+          status: payload.status,
+          userId: payload.userId,
+          role: payload.role,
+        });
+        return { ok: true, data: res };
+      }
+      case "admin.resolveTicket": {
+        const adm = verifyAdminJwt(ctx.adminToken, ctx.adminJwtSecret, now);
+        const res = await replyAndResolveTicket(ctx.db, {
+          ticketId: String(payload.ticketId),
+          handlerId: adm.sub,
+          reply: String(payload.reply ?? ""),
+          nextStatus: payload.nextStatus,
+          nowUtcMs: now,
+        });
+        await recordAdminAudit(ctx.db, {
+          actorUserId: adm.sub,
+          action: "resolveTicket",
+          targetId: res._id,
+          summary: `处理工单 ${res._id} -> ${res.status}`,
+          nowUtcMs: now,
+        });
+        return { ok: true, data: res };
+      }
       case "admin.overview": {
         verifyAdminJwt(ctx.adminToken, ctx.adminJwtSecret, now);
-        const [readyPkgs, holdPkgs, escalatedReviews, funnelCandidates] = await Promise.all([
-          ctx.db.find<OrderPackageDoc>(COLLECTIONS.ORDER_PACKAGES, (p) => p.status === "ready_to_ship"),
-          ctx.db.find<OrderPackageDoc>(COLLECTIONS.ORDER_PACKAGES, (p) => p.status === "manual_hold"),
-          ctx.db.find<PhotoReviewDoc>(COLLECTIONS.PHOTO_REVIEWS, (r) => r.status === "needs_admin"),
-          ctx.db.find<RecruitFunnelDoc>(COLLECTIONS.RECRUIT_FUNNEL, (f) =>
-            ["sample_inspect", "pending_deposit"].includes(f.stage),
-          ),
-        ]);
+        const [readyPkgs, holdPkgs, escalatedReviews, funnelCandidates, openTickets, currentMonthSalesFen] =
+          await Promise.all([
+            ctx.db.find<OrderPackageDoc>(COLLECTIONS.ORDER_PACKAGES, (p) => p.status === "ready_to_ship"),
+            ctx.db.find<OrderPackageDoc>(COLLECTIONS.ORDER_PACKAGES, (p) => p.status === "manual_hold"),
+            ctx.db.find<PhotoReviewDoc>(COLLECTIONS.PHOTO_REVIEWS, (r) => r.status === "needs_admin"),
+            ctx.db.find<RecruitFunnelDoc>(COLLECTIONS.RECRUIT_FUNNEL, (f) =>
+              ["sample_inspect", "pending_deposit"].includes(f.stage),
+            ),
+            ctx.db.find<TicketDoc>(COLLECTIONS.TICKETS, (t) => t.status !== "resolved"),
+            computeCurrentMonthSalesFen(ctx.db, now),
+          ]);
         return {
           ok: true,
           data: {
@@ -773,6 +1088,8 @@ export async function dispatchCloudAction(
             manualHoldPackages: holdPkgs,
             escalatedReviews,
             funnelCandidates,
+            openTicketsCount: openTickets.length,
+            currentMonthSalesFen,
           },
         };
       }
@@ -787,24 +1104,40 @@ export async function dispatchCloudAction(
         });
         return { ok: true, data: res };
       }
+      case "webhook.kuaidi100": {
+        assertNotMiniProgramClient(ctx);
+        const res = await handleKuaidi100Webhook(ctx.db, {
+          packageId: payload.packageId ? String(payload.packageId) : undefined,
+          taskId: payload.taskId ? String(payload.taskId) : undefined,
+          state: payload.state,
+          trackingNo: payload.trackingNo ? String(payload.trackingNo) : undefined,
+          carrierCode: payload.carrierCode ? String(payload.carrierCode) : undefined,
+          shippingCostFen: payload.shippingCostFen !== undefined ? Number(payload.shippingCostFen) : undefined,
+          logisticsPort: ctx.ports.logistics,
+          nowUtcMs: now,
+        });
+        return { ok: true, data: res };
+      }
 
       // ---------------- CRON ----------------
       case "cron.dispatchTick": {
-        assertNotMiniProgramClient(ctx);
+        assertCronCaller(ctx, now);
         const res = await dispatchPoolTick(ctx.db, { nowUtcMs: now });
         return { ok: true, data: res };
       }
       case "cron.fiveMinuteWatchdog": {
-        assertNotMiniProgramClient(ctx);
-        const [offers, stock, sla] = await Promise.all([
+        assertCronCaller(ctx, now);
+        const [offers, stock, sla, smsReminders, pickupRetries] = await Promise.all([
           sweepOffersAndStalledPackages(ctx.db, now),
           releaseExpiredReservations(ctx.db, now),
           sweepPhotoReviewSla(ctx.db, now),
+          sweepOfferPreExpirySmsReminders(ctx.db, ctx.ports.notify, now),
+          sweepUnscheduledMpPickups(ctx.db, ctx.ports.logistics, now),
         ]);
-        return { ok: true, data: { offers, stock, sla } };
+        return { ok: true, data: { offers, stock, sla, smsReminders, pickupRetries } };
       }
       case "cron.dailySettleAndReconcile": {
-        assertNotMiniProgramClient(ctx);
+        assertCronCaller(ctx, now);
         const settle = await sweepSettleEligiblePackages(ctx.db, now);
         const weavers = await ctx.db.find<UserDoc>(COLLECTIONS.USERS, (u) => u.roles.includes("weaver"));
         const mismatches: string[] = [];
@@ -813,6 +1146,16 @@ export async function dispatchCloudAction(
           if (!r.ok) mismatches.push(w._id);
         }
         return { ok: true, data: { ...settle, reconciledWeavers: weavers.length, mismatches } };
+      }
+      case "cron.dailyDueAndStockAlert": {
+        assertCronCaller(ctx, now);
+        const res = await runDailyDueAndStockAlerts(ctx.db, now);
+        return { ok: true, data: res };
+      }
+      case "cron.weeklyGovernance": {
+        assertCronCaller(ctx, now);
+        const res = await runWeeklyGovernance(ctx.db, now);
+        return { ok: true, data: res };
       }
 
       default:

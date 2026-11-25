@@ -4,6 +4,7 @@ import {
   HOUR_MS,
   AppError,
   ERROR_CODES,
+  LEDGER_ACCOUNT_CODES,
   WEAVER_DEPOSIT_FEN,
   RECRUIT_FUNNEL_SPEC,
   canTransition,
@@ -53,7 +54,9 @@ export async function submitFunnelEntryStep1(
   const region = inferRegionFromProvince(params.province);
   const regionOk = params.activeRecruitRegions.includes(region);
 
-  const prevAttempts = existing && existing.stage !== "rejected" ? existing.quizAttempts : 0;
+  const isReapplyingAfterExit = existing?.depositStatus === "refunded";
+  const prevAttempts =
+    existing && existing.stage !== "rejected" && !isReapplyingAfterExit ? existing.quizAttempts : 0;
   const nextAttempts = prevAttempts + 1;
   const quizOk = params.quizCorrectCount >= 7;
 
@@ -182,9 +185,15 @@ export async function passPortfolioAndUnlockExamSample(
   }
 
   if (params.requireApprovedPortfolio) {
+    const expectedReviewId =
+      cur.portfolioAttempts > 0 ? `rev_portfolio_${params.userId}_${cur.portfolioAttempts}` : undefined;
     const approvedPortfolio = await db.find<PhotoReviewDoc>(
       COLLECTIONS.PHOTO_REVIEWS,
-      (r) => r.scene === "funnel_portfolio" && r.targetId === fId && r.status === "approved",
+      (r) =>
+        r.scene === "funnel_portfolio" &&
+        r.targetId === fId &&
+        r.status === "approved" &&
+        (expectedReviewId ? r._id === expectedReviewId : true),
     );
     if (approvedPortfolio.length === 0) {
       throw new AppError(ERROR_CODES.FORBIDDEN, "历史作品集盲审通过后方可解锁考级小样");
@@ -328,7 +337,14 @@ export async function completeDepositAndApproveWeaver(
     throw new AppError(ERROR_CODES.INVALID_STATE_TRANSITION, "需先通过实物验收进入待缴保证金阶段");
   }
 
-  await recordWeaverDeposit(db, params.userId, undefined, now);
+  await recordWeaverDeposit(
+    db,
+    params.userId,
+    params.depositChannel === "manual_transfer_verify"
+      ? LEDGER_ACCOUNT_CODES.ASSET_BANK_CASH
+      : LEDGER_ACCOUNT_CODES.ASSET_WXPAY_CASH,
+    now,
+  );
 
   await db.put<RecruitFunnelDoc>(COLLECTIONS.RECRUIT_FUNNEL, {
     ...cur,

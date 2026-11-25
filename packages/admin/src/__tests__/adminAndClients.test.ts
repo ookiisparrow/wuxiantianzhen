@@ -61,6 +61,13 @@ test("Admin API client integrates end-to-end with CloudBase router JWT & error c
   const okPreview = await client.previewDouyinCsv({ orderRows: [], confirmZeroRefundsToday: true });
   assert.equal(okPreview.valid, true);
   assert.equal(okPreview.newOrderCount, 0);
+
+  // Config & ticket client methods round-trip cleanly
+  await client.setConfig({ key: "finance", value: { monthlyRevenueTaxAlertFen: 8_000_000 } });
+  const finCfg = await client.getConfig("finance");
+  assert.equal(finCfg.value.monthlyRevenueTaxAlertFen, 8_000_000);
+  const tickets = await client.listTickets({ status: "open" });
+  assert.deepEqual(tickets, []);
 });
 
 test("mp-weaver & mp-buyer pages exist and enforce Lyric Pattern Companion & 8s Blind Review specs", () => {

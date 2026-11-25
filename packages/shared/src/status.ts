@@ -131,3 +131,32 @@ export const BAG_STICKER_STATUS_SPEC: StateSpec<BagStickerStatus> = {
   bound: ["void"],
   void: [],
 };
+
+// 辅助状态机 8: 物流发货单 (shipments)
+export type ShipmentStatus =
+  | "awaiting_seal"
+  | "ready_to_ship"
+  | "pickup_scheduled"
+  | "in_transit"
+  | "signed"
+  | "lost_or_damaged"
+  | "cancelled";
+
+export const SHIPMENT_STATUS_SPEC: StateSpec<ShipmentStatus> = {
+  awaiting_seal: ["ready_to_ship", "in_transit", "cancelled"],
+  ready_to_ship: ["pickup_scheduled", "in_transit", "cancelled"],
+  pickup_scheduled: ["in_transit", "ready_to_ship", "cancelled"],
+  in_transit: ["signed", "lost_or_damaged"],
+  signed: [],
+  lost_or_damaged: [],
+  cancelled: [],
+};
+
+// 辅助状态机 9: 工单与售后单 (tickets)
+export type TicketStatus = "open" | "processing" | "resolved";
+
+export const TICKET_STATUS_SPEC: StateSpec<TicketStatus> = {
+  open: ["processing", "resolved"],
+  processing: ["resolved"],
+  resolved: [],
+};

@@ -26,6 +26,16 @@
           "name": "dailySettle0200",
           "type": "timer",
           "config": "0 0 2 * * * *"
+        },
+        {
+          "name": "dueAndStockAlertDaily9am",
+          "type": "timer",
+          "config": "0 0 9 * * *"
+        },
+        {
+          "name": "weeklyGovernanceMonday9am",
+          "type": "timer",
+          "config": "0 0 9 * * 1"
         }
       ]
     }

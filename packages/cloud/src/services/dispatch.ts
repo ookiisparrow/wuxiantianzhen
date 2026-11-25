@@ -138,26 +138,13 @@ export async function dispatchPoolTick(
     }
   }
 
-  // Preload prior offers: never re-offer to a weaver who rejected/timed-out, and deprioritize prior releasers
+  // Preload prior offers: never re-offer within the current manual-reset epoch to a weaver who rejected/timed-out
   const allOffers = await db.find<DispatchOfferDoc>(COLLECTIONS.DISPATCH_OFFERS, () => true);
-  const rejectedOrExpiredByPkg = new Map<string, Set<string>>();
-  const priorAcceptedByPkg = new Map<string, Set<string>>();
+  const offersByPkg = new Map<string, DispatchOfferDoc[]>();
   for (const off of allOffers) {
-    if (off.status === "rejected" || off.status === "timeout") {
-      let s = rejectedOrExpiredByPkg.get(off.packageId);
-      if (!s) {
-        s = new Set();
-        rejectedOrExpiredByPkg.set(off.packageId, s);
-      }
-      s.add(off.weaverId);
-    } else if (off.status === "accepted") {
-      let s = priorAcceptedByPkg.get(off.packageId);
-      if (!s) {
-        s = new Set();
-        priorAcceptedByPkg.set(off.packageId, s);
-      }
-      s.add(off.weaverId);
-    }
+    const list = offersByPkg.get(off.packageId) ?? [];
+    list.push(off);
+    offersByPkg.set(off.packageId, list);
   }
 
   // Preload ready stock docs & track unreserved free stock across this tick
@@ -172,7 +159,8 @@ export async function dispatchPoolTick(
   waiting.sort((a, b) => a.dispatchableAt - b.dispatchableAt);
 
   for (const pkg of waiting) {
-    if (pkg.attemptCount >= maxAttempts) {
+    const resetBaseline = pkg.lastManualResetAttempt ?? 0;
+    if (pkg.attemptCount - resetBaseline >= maxAttempts) {
       const tr = await transitionStatus(
         db,
         COLLECTIONS.ORDER_PACKAGES,
@@ -191,8 +179,16 @@ export async function dispatchPoolTick(
     const horizonDays = pkg.channel === "mp_wechat" ? mpHorizon : liveHorizon;
     const buyerRegion = inferRegionFromProvince(pkg.buyerProvince);
     const buyerProvNorm = normProvince(pkg.buyerProvince);
-    const rejectedOrExpired = rejectedOrExpiredByPkg.get(pkg._id);
-    const priorAccepted = priorAcceptedByPkg.get(pkg._id);
+    const rejectedOrExpired = new Set<string>();
+    const priorAccepted = new Set<string>();
+    for (const off of offersByPkg.get(pkg._id) ?? []) {
+      if (off.attemptNo <= resetBaseline) continue;
+      if (off.status === "rejected" || off.status === "timeout") {
+        rejectedOrExpired.add(off.weaverId);
+      } else if (off.status === "accepted") {
+        priorAccepted.add(off.weaverId);
+      }
+    }
     const pkgOrderSet = new Set(pkg.orderIds);
 
     // Aggregate total BOM grams required across ALL items in this package

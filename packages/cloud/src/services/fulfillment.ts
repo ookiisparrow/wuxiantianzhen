@@ -1,16 +1,22 @@
 import {
   COLLECTIONS,
+  DAY_MS,
   HOUR_MS,
   AppError,
   ERROR_CODES,
+  LEDGER_ACCOUNT_CODES,
   ZERO_FEN,
   addFen,
+  asNonNegativeFen,
   formatCstYmd,
   BAG_STICKER_STATUS_SPEC,
   ORDER_PACKAGE_STATUS_SPEC,
   PHOTO_REVIEW_STATUS_SPEC,
+  SHIPMENT_STATUS_SPEC,
+  type AddressDoc,
   type Fen,
   type BagStickerDoc,
+  type OrderDoc,
   type OrderPackageDoc,
   type PhotoReviewDoc,
   type ShipmentDoc,
@@ -20,10 +26,12 @@ import {
   type VolunteerVoteDoc,
 } from "@wxtz/shared";
 import type { DbAdapter } from "../kit/db.ts";
-import { bagStickerId, newReviewId, shipmentId, volunteerId, volunteerVoteId } from "../kit/ids.ts";
-import { accrueSettledPackage } from "../kit/ledger.ts";
+import { bagStickerId, ledgerKeyShipFee, newReviewId, shipmentId, volunteerId, volunteerVoteId } from "../kit/ids.ts";
+import { accrueSettledPackage, postLedgerEntry } from "../kit/ledger.ts";
 import { compactWeaverQueue } from "../kit/queue.ts";
+import { updateWeaverSpeedFactorOnShipped } from "../kit/speed.ts";
 import { transitionStatus } from "../kit/transition.ts";
+import type { LogisticsPort } from "../ports/index.ts";
 
 /**
  * Weaver submits finished work from `making`:
@@ -43,6 +51,7 @@ export async function submitFinishedWork(
     pickupWindow?: string;
     selfDropoffTrackingNo?: string;
     standardSelfShipReimbFen?: Fen;
+    logisticsPort?: LogisticsPort;
     nowUtcMs?: number;
   },
 ): Promise<{ nextStatus: OrderPackageDoc["status"]; reviewId?: string; duplicateFlagged?: boolean }> {
@@ -99,7 +108,7 @@ export async function submitFinishedWork(
     );
     let finalStatus: OrderPackageDoc["status"] = "ready_to_ship";
     if (tr.moved && tr.doc && shipDoc.fulfillMode === "weaver_self_ship" && params.selfDropoffTrackingNo) {
-      await transitionStatus(
+      const trShip = await transitionStatus(
         db,
         COLLECTIONS.ORDER_PACKAGES,
         pkg._id,
@@ -110,7 +119,20 @@ export async function submitFinishedWork(
         () => ({ shippedAt: now }),
         now,
       );
-      finalStatus = "shipped";
+      if (trShip.moved) {
+        finalStatus = "shipped";
+        await updateWeaverSpeedFactorOnShipped(db, pkg, now);
+      }
+    } else if (
+      tr.moved &&
+      pkg.channel === "mp_wechat" &&
+      shipDoc.fulfillMode === "kuaidi100_pickup" &&
+      params.logisticsPort
+    ) {
+      const sched = await scheduleMpPickupForShipment(db, pkg._id, params.logisticsPort, now);
+      if (sched.movedToManualHold) {
+        finalStatus = "manual_hold";
+      }
     }
     if (tr.moved) {
       await compactWeaverQueue(db, params.weaverId, now);
@@ -490,6 +512,7 @@ export async function sealAndSubmitShipment(
     pickupWindow?: string;
     selfDropoffTrackingNo?: string; // if weaver is in township self_dropoff mode
     standardSelfShipReimbFen?: Fen;
+    logisticsPort?: LogisticsPort;
     nowUtcMs?: number;
   },
 ): Promise<{ status: OrderPackageDoc["status"] }> {
@@ -511,10 +534,10 @@ export async function sealAndSubmitShipment(
     params.standardSelfShipReimbFen,
   );
 
-  const targetPkgStatus: OrderPackageDoc["status"] =
+  let finalStatus: OrderPackageDoc["status"] =
     shipDoc.fulfillMode === "weaver_self_ship" && params.selfDropoffTrackingNo ? "shipped" : "ready_to_ship";
 
-  if (targetPkgStatus === "shipped") {
+  if (finalStatus === "shipped") {
     // Move awaiting_seal -> ready_to_ship -> shipped cleanly
     const tr1 = await transitionStatus(
       db,
@@ -528,7 +551,7 @@ export async function sealAndSubmitShipment(
       now,
     );
     if (tr1.moved && tr1.doc) {
-      await transitionStatus(
+      const tr2 = await transitionStatus(
         db,
         COLLECTIONS.ORDER_PACKAGES,
         pkg._id,
@@ -539,9 +562,12 @@ export async function sealAndSubmitShipment(
         () => ({ shippedAt: now }),
         now,
       );
+      if (tr2.moved) {
+        await updateWeaverSpeedFactorOnShipped(db, pkg, now);
+      }
     }
   } else {
-    await transitionStatus(
+    const tr = await transitionStatus(
       db,
       COLLECTIONS.ORDER_PACKAGES,
       pkg._id,
@@ -552,10 +578,21 @@ export async function sealAndSubmitShipment(
       () => ({ bagQrCode: params.bagStickerCode, queueSeq: undefined }),
       now,
     );
+    if (
+      tr.moved &&
+      pkg.channel === "mp_wechat" &&
+      shipDoc.fulfillMode === "kuaidi100_pickup" &&
+      params.logisticsPort
+    ) {
+      const sched = await scheduleMpPickupForShipment(db, pkg._id, params.logisticsPort, now);
+      if (sched.movedToManualHold) {
+        finalStatus = "manual_hold";
+      }
+    }
   }
 
   await compactWeaverQueue(db, params.weaverId, now);
-  return { status: targetPkgStatus };
+  return { status: finalStatus };
 }
 
 async function bindBagStickerToPackage(
@@ -603,6 +640,22 @@ async function createReadyShipment(
     fulfillMode = "weaver_self_ship";
   }
 
+  let senderAddrId = weaver?.defaultSendAddrId;
+  if (!senderAddrId) {
+    const addrs = await db.find<AddressDoc>(
+      COLLECTIONS.ADDRESSES,
+      (a) => a.ownerUserId === weaverId && a.type === "weaver_send",
+    );
+    addrs.sort((a, b) => Number(b.isDefault) - Number(a.isDefault));
+    senderAddrId = addrs[0]?._id;
+  }
+
+  let receiverAddrId: string | undefined;
+  if (pkg.channel === "mp_wechat" && pkg.orderIds[0]) {
+    const ord = await db.get<OrderDoc>(COLLECTIONS.ORDERS, pkg.orderIds[0]);
+    receiverAddrId = ord?.receiverAddrId;
+  }
+
   const doc: ShipmentDoc = {
     _id: shipmentId(pkg._id),
     packageId: pkg._id,
@@ -610,15 +663,523 @@ async function createReadyShipment(
     pickupWindow,
     sealedPhotoFileId,
     doudianAddressAlias: weaver?.doudianAddressAlias,
-    senderAddrId: weaver?.defaultSendAddrId,
+    senderAddrId,
+    receiverAddrId,
     trackingNo: selfDropoffTrackingNo,
     selfShipReimbFen: fulfillMode === "weaver_self_ship" ? standardSelfShipReimbFen : undefined,
     pickupRetryCount: 0,
     status: selfDropoffTrackingNo ? "in_transit" : "ready_to_ship",
+    version: 1,
     updatedAt: nowUtcMs,
   };
   await db.put(COLLECTIONS.SHIPMENTS, doc);
   return doc;
+}
+
+/**
+ * Schedules doorstep courier pickup via Kuaidi100 (`privacyWaybill: true`) for MP packages in `ready_to_ship`.
+ * On failure, increments `pickupRetryCount`; once retries exceed 2 (>2), moves shipment to `cancelled`
+ * and escalates package `ready_to_ship -> manual_hold` (docs/07 §4.1).
+ */
+export async function scheduleMpPickupForShipment(
+  db: DbAdapter,
+  packageId: string,
+  logisticsPort: LogisticsPort,
+  nowUtcMs: number = Date.now(),
+): Promise<{
+  scheduled: boolean;
+  taskId?: string;
+  carrierCode?: string;
+  retries?: number;
+  movedToManualHold?: boolean;
+}> {
+  const pkg = await db.get<OrderPackageDoc>(COLLECTIONS.ORDER_PACKAGES, packageId);
+  const ship = await db.get<ShipmentDoc>(COLLECTIONS.SHIPMENTS, shipmentId(packageId));
+  if (!pkg || !ship || ship.status !== "ready_to_ship") {
+    return { scheduled: false };
+  }
+
+  let senderAddr = ship.senderAddrId ? await db.get<AddressDoc>(COLLECTIONS.ADDRESSES, ship.senderAddrId) : null;
+  if (!senderAddr && pkg.assignedWeaverId) {
+    const addrs = await db.find<AddressDoc>(
+      COLLECTIONS.ADDRESSES,
+      (a) => a.ownerUserId === pkg.assignedWeaverId && a.type === "weaver_send",
+    );
+    addrs.sort((a, b) => Number(b.isDefault) - Number(a.isDefault));
+    senderAddr = addrs[0] ?? null;
+  }
+
+  let receiverAddr = ship.receiverAddrId ? await db.get<AddressDoc>(COLLECTIONS.ADDRESSES, ship.receiverAddrId) : null;
+  if (!receiverAddr && pkg.orderIds[0]) {
+    const ord = await db.get<OrderDoc>(COLLECTIONS.ORDERS, pkg.orderIds[0]);
+    if (ord?.receiverAddrId) {
+      receiverAddr = await db.get<AddressDoc>(COLLECTIONS.ADDRESSES, ord.receiverAddrId);
+    }
+  }
+
+  if (!senderAddr || !receiverAddr) {
+    return { scheduled: false };
+  }
+
+  try {
+    const gw = await logisticsPort.scheduleDoorstepPickup({
+      packageId: pkg._id,
+      sender: {
+        contactName: senderAddr.contactName,
+        contactPhone: senderAddr.contactPhone,
+        province: senderAddr.province,
+        city: senderAddr.city,
+        district: senderAddr.district,
+        detail: senderAddr.detail,
+      },
+      receiver: {
+        contactName: receiverAddr.contactName,
+        contactPhone: receiverAddr.contactPhone,
+        province: receiverAddr.province,
+        city: receiverAddr.city,
+        district: receiverAddr.district,
+        detail: receiverAddr.detail,
+      },
+      pickupWindow: ship.pickupWindow,
+      privacyWaybill: true,
+    });
+
+    const tr = await transitionStatus(
+      db,
+      COLLECTIONS.SHIPMENTS,
+      ship._id,
+      SHIPMENT_STATUS_SPEC,
+      "ready_to_ship",
+      "pickup_scheduled",
+      ship.version,
+      () => ({
+        senderAddrId: senderAddr._id,
+        receiverAddrId: receiverAddr._id,
+        kuaidi100TaskId: gw.taskId,
+        carrierCode: gw.carrierCode,
+      }),
+      nowUtcMs,
+    );
+    return {
+      scheduled: tr.moved,
+      taskId: gw.taskId,
+      carrierCode: gw.carrierCode,
+      retries: ship.pickupRetryCount,
+      movedToManualHold: false,
+    };
+  } catch {
+    const nextRetry = ship.pickupRetryCount + 1;
+    if (nextRetry > 2) {
+      await transitionStatus(
+        db,
+        COLLECTIONS.SHIPMENTS,
+        ship._id,
+        SHIPMENT_STATUS_SPEC,
+        "ready_to_ship",
+        "cancelled",
+        ship.version,
+        () => ({ pickupRetryCount: nextRetry, kuaidi100TaskId: undefined }),
+        nowUtcMs,
+      );
+      let movedHold = false;
+      const curPkg = await db.get<OrderPackageDoc>(COLLECTIONS.ORDER_PACKAGES, pkg._id);
+      if (curPkg && curPkg.status === "ready_to_ship") {
+        const pTr = await transitionStatus(
+          db,
+          COLLECTIONS.ORDER_PACKAGES,
+          curPkg._id,
+          ORDER_PACKAGE_STATUS_SPEC,
+          "ready_to_ship",
+          "manual_hold",
+          curPkg.version,
+          undefined,
+          nowUtcMs,
+        );
+        movedHold = pTr.moved;
+      }
+      return { scheduled: false, retries: nextRetry, movedToManualHold: movedHold };
+    }
+
+    await db.atomicUpdate<ShipmentDoc>(
+      COLLECTIONS.SHIPMENTS,
+      ship._id,
+      (cur) => cur.version === ship.version,
+      (cur) => ({ ...cur, pickupRetryCount: nextRetry, version: cur.version + 1, updatedAt: nowUtcMs }),
+    );
+    return { scheduled: false, retries: nextRetry, movedToManualHold: false };
+  }
+}
+
+/**
+ * Handles Kuaidi100 webhook state callbacks (`picked_up`, `signed`, `pickup_failed`, `lost`).
+ */
+export async function handleKuaidi100Webhook(
+  db: DbAdapter,
+  params: {
+    packageId?: string;
+    taskId?: string;
+    state: "picked_up" | "signed" | "pickup_failed" | "lost" | (string & {});
+    trackingNo?: string;
+    carrierCode?: string;
+    shippingCostFen?: number;
+    logisticsPort?: LogisticsPort;
+    nowUtcMs?: number;
+  },
+): Promise<{
+  packageId: string;
+  shipmentStatus: ShipmentDoc["status"];
+  packageStatus: OrderPackageDoc["status"];
+  retries?: number;
+  movedToManualHold?: boolean;
+}> {
+  const now = params.nowUtcMs ?? Date.now();
+  let ship: ShipmentDoc | null = null;
+  if (params.packageId) {
+    ship = await db.get<ShipmentDoc>(COLLECTIONS.SHIPMENTS, shipmentId(params.packageId));
+  }
+  if (!ship && params.taskId) {
+    const found = await db.find<ShipmentDoc>(COLLECTIONS.SHIPMENTS, (s) => s.kuaidi100TaskId === params.taskId);
+    ship = found[0] ?? null;
+  }
+  if (!ship) {
+    throw new AppError(ERROR_CODES.NOT_FOUND, "未找到对应的快递100发货单");
+  }
+
+  const pkg = await db.get<OrderPackageDoc>(COLLECTIONS.ORDER_PACKAGES, ship.packageId);
+  if (!pkg) {
+    throw new AppError(ERROR_CODES.NOT_FOUND, "未找到关联履约订单包");
+  }
+
+  if (params.state === "pickup_failed") {
+    if (ship.status === "cancelled") {
+      return {
+        packageId: pkg._id,
+        shipmentStatus: ship.status,
+        packageStatus: pkg.status,
+        retries: ship.pickupRetryCount,
+        movedToManualHold: pkg.status === "manual_hold",
+      };
+    }
+
+    const nextRetry = ship.pickupRetryCount + 1;
+    if (nextRetry <= 2) {
+      if (ship.status === "pickup_scheduled") {
+        await transitionStatus(
+          db,
+          COLLECTIONS.SHIPMENTS,
+          ship._id,
+          SHIPMENT_STATUS_SPEC,
+          "pickup_scheduled",
+          "ready_to_ship",
+          ship.version,
+          () => ({ pickupRetryCount: nextRetry }),
+          now,
+        );
+      } else {
+        await db.atomicUpdate<ShipmentDoc>(
+          COLLECTIONS.SHIPMENTS,
+          ship._id,
+          (cur) => cur.version === ship!.version,
+          (cur) => ({ ...cur, pickupRetryCount: nextRetry, version: cur.version + 1, updatedAt: now }),
+        );
+      }
+      if (params.logisticsPort) {
+        const reSched = await scheduleMpPickupForShipment(db, pkg._id, params.logisticsPort, now);
+        const latestShip = (await db.get<ShipmentDoc>(COLLECTIONS.SHIPMENTS, ship._id))!;
+        const latestPkg = (await db.get<OrderPackageDoc>(COLLECTIONS.ORDER_PACKAGES, pkg._id))!;
+        return {
+          packageId: pkg._id,
+          shipmentStatus: latestShip.status,
+          packageStatus: latestPkg.status,
+          retries: latestShip.pickupRetryCount,
+          movedToManualHold: Boolean(reSched.movedToManualHold),
+        };
+      }
+      const latestShip = (await db.get<ShipmentDoc>(COLLECTIONS.SHIPMENTS, ship._id))!;
+      return {
+        packageId: pkg._id,
+        shipmentStatus: latestShip.status,
+        packageStatus: pkg.status,
+        retries: nextRetry,
+        movedToManualHold: false,
+      };
+    }
+
+    // Retries exhausted (nextRetry > 2) -> cancel shipment & move package to manual_hold
+    if (ship.status === "pickup_scheduled" || ship.status === "ready_to_ship") {
+      await transitionStatus(
+        db,
+        COLLECTIONS.SHIPMENTS,
+        ship._id,
+        SHIPMENT_STATUS_SPEC,
+        ship.status,
+        "cancelled",
+        ship.version,
+        () => ({ pickupRetryCount: nextRetry, kuaidi100TaskId: undefined }),
+        now,
+      );
+    }
+    let movedHold = false;
+    if (pkg.status === "ready_to_ship") {
+      const pTr = await transitionStatus(
+        db,
+        COLLECTIONS.ORDER_PACKAGES,
+        pkg._id,
+        ORDER_PACKAGE_STATUS_SPEC,
+        "ready_to_ship",
+        "manual_hold",
+        pkg.version,
+        undefined,
+        now,
+      );
+      movedHold = pTr.moved;
+    }
+    const latestShip = (await db.get<ShipmentDoc>(COLLECTIONS.SHIPMENTS, ship._id))!;
+    const latestPkg = (await db.get<OrderPackageDoc>(COLLECTIONS.ORDER_PACKAGES, pkg._id))!;
+    return {
+      packageId: pkg._id,
+      shipmentStatus: latestShip.status,
+      packageStatus: latestPkg.status,
+      retries: nextRetry,
+      movedToManualHold: movedHold,
+    };
+  }
+
+  if (params.state === "picked_up") {
+    if (ship.status === "cancelled" || ship.status === "signed" || ship.status === "lost_or_damaged") {
+      return {
+        packageId: pkg._id,
+        shipmentStatus: ship.status,
+        packageStatus: pkg.status,
+      };
+    }
+
+    const costFen =
+      params.shippingCostFen !== undefined ? asNonNegativeFen(params.shippingCostFen) : ship.shippingCostFen;
+
+    let shipMoved = false;
+    if (ship.status === "ready_to_ship" || ship.status === "pickup_scheduled") {
+      const sTr = await transitionStatus(
+        db,
+        COLLECTIONS.SHIPMENTS,
+        ship._id,
+        SHIPMENT_STATUS_SPEC,
+        ship.status,
+        "in_transit",
+        ship.version,
+        () => ({
+          trackingNo: params.trackingNo ?? ship!.trackingNo,
+          carrierCode: params.carrierCode ?? ship!.carrierCode,
+          shippingCostFen: costFen,
+        }),
+        now,
+      );
+      shipMoved = sTr.moved;
+    }
+
+    let pkgMoved = false;
+    if (shipMoved && pkg.status === "ready_to_ship") {
+      const pTr = await transitionStatus(
+        db,
+        COLLECTIONS.ORDER_PACKAGES,
+        pkg._id,
+        ORDER_PACKAGE_STATUS_SPEC,
+        "ready_to_ship",
+        "shipped",
+        pkg.version,
+        () => ({ shippedAt: now }),
+        now,
+      );
+      pkgMoved = pTr.moved;
+      if (pTr.moved) {
+        await updateWeaverSpeedFactorOnShipped(db, pkg, now);
+      }
+    }
+
+    if (pkgMoved && costFen && costFen > 0) {
+      await postLedgerEntry(db, {
+        _id: ledgerKeyShipFee(pkg._id),
+        eventType: "ship_fee",
+        bizId: pkg._id,
+        lines: [
+          { accountCode: LEDGER_ACCOUNT_CODES.EXP_SHIPPING_PLATFORM, debitFen: costFen, creditFen: ZERO_FEN },
+          { accountCode: LEDGER_ACCOUNT_CODES.ASSET_KD100_PREPAID, debitFen: ZERO_FEN, creditFen: costFen },
+        ],
+        memo: `小程序包裹 ${pkg._id} 快递100取件运费扣减预充`,
+        createdAt: now,
+      });
+    }
+
+    const latestShip = (await db.get<ShipmentDoc>(COLLECTIONS.SHIPMENTS, ship._id))!;
+    const latestPkg = (await db.get<OrderPackageDoc>(COLLECTIONS.ORDER_PACKAGES, pkg._id))!;
+    return {
+      packageId: pkg._id,
+      shipmentStatus: latestShip.status,
+      packageStatus: latestPkg.status,
+    };
+  }
+
+  if (params.state === "signed") {
+    if (ship.status === "cancelled" || ship.status === "lost_or_damaged") {
+      return {
+        packageId: pkg._id,
+        shipmentStatus: ship.status,
+        packageStatus: pkg.status,
+      };
+    }
+
+    let curShip = ship;
+    if (curShip.status === "ready_to_ship" || curShip.status === "pickup_scheduled") {
+      const sTr1 = await transitionStatus(
+        db,
+        COLLECTIONS.SHIPMENTS,
+        curShip._id,
+        SHIPMENT_STATUS_SPEC,
+        curShip.status,
+        "in_transit",
+        curShip.version,
+        () => ({
+          trackingNo: params.trackingNo ?? curShip.trackingNo,
+          carrierCode: params.carrierCode ?? curShip.carrierCode,
+        }),
+        now,
+      );
+      if (sTr1.doc) curShip = sTr1.doc;
+    }
+    let shipSignedMoved = false;
+    if (curShip.status === "in_transit") {
+      const sTr2 = await transitionStatus(
+        db,
+        COLLECTIONS.SHIPMENTS,
+        curShip._id,
+        SHIPMENT_STATUS_SPEC,
+        "in_transit",
+        "signed",
+        curShip.version,
+        () => ({ trackingNo: params.trackingNo ?? curShip.trackingNo }),
+        now,
+      );
+      shipSignedMoved = sTr2.moved;
+    }
+
+    let curPkg = pkg;
+    if (shipSignedMoved && curPkg.status === "ready_to_ship") {
+      const pTr1 = await transitionStatus(
+        db,
+        COLLECTIONS.ORDER_PACKAGES,
+        curPkg._id,
+        ORDER_PACKAGE_STATUS_SPEC,
+        "ready_to_ship",
+        "shipped",
+        curPkg.version,
+        () => ({ shippedAt: now }),
+        now,
+      );
+      if (pTr1.moved) {
+        await updateWeaverSpeedFactorOnShipped(db, curPkg, now);
+      }
+      if (pTr1.doc) curPkg = pTr1.doc;
+    }
+    let pkgSignedMoved = false;
+    if (curPkg.status === "shipped") {
+      const pTr2 = await transitionStatus(
+        db,
+        COLLECTIONS.ORDER_PACKAGES,
+        curPkg._id,
+        ORDER_PACKAGE_STATUS_SPEC,
+        "shipped",
+        "signed",
+        curPkg.version,
+        () => ({ signedAt: now, settleEligibleAt: now + 7 * DAY_MS }),
+        now,
+      );
+      pkgSignedMoved = pTr2.moved;
+    }
+
+    if (pkgSignedMoved) {
+      for (const ordId of curPkg.orderIds) {
+        await db.atomicUpdate<OrderDoc>(
+          COLLECTIONS.ORDERS,
+          ordId,
+          (o) => o.status === "paid",
+          (o) => ({ ...o, status: "fulfilled", updatedAt: now }),
+        );
+      }
+    }
+
+    const latestShip = (await db.get<ShipmentDoc>(COLLECTIONS.SHIPMENTS, ship._id))!;
+    const latestPkg = (await db.get<OrderPackageDoc>(COLLECTIONS.ORDER_PACKAGES, pkg._id))!;
+    return {
+      packageId: pkg._id,
+      shipmentStatus: latestShip.status,
+      packageStatus: latestPkg.status,
+    };
+  }
+
+  if (params.state === "lost") {
+    if (ship.status === "in_transit") {
+      await transitionStatus(
+        db,
+        COLLECTIONS.SHIPMENTS,
+        ship._id,
+        SHIPMENT_STATUS_SPEC,
+        "in_transit",
+        "lost_or_damaged",
+        ship.version,
+        undefined,
+        now,
+      );
+    }
+    const latestShip = (await db.get<ShipmentDoc>(COLLECTIONS.SHIPMENTS, ship._id))!;
+    const latestPkg = (await db.get<OrderPackageDoc>(COLLECTIONS.ORDER_PACKAGES, pkg._id))!;
+    return {
+      packageId: pkg._id,
+      shipmentStatus: latestShip.status,
+      packageStatus: latestPkg.status,
+    };
+  }
+
+  // Intermediate carrier trajectory push (e.g., "in_transit", "delivering") -> harmless metadata refresh only
+  if (params.trackingNo && ship.status !== "cancelled" && !ship.trackingNo) {
+    await db.atomicUpdate<ShipmentDoc>(
+      COLLECTIONS.SHIPMENTS,
+      ship._id,
+      (cur) => cur.version === ship!.version,
+      (cur) => ({ ...cur, trackingNo: params.trackingNo, updatedAt: now }),
+    );
+  }
+  return {
+    packageId: pkg._id,
+    shipmentStatus: ship.status,
+    packageStatus: pkg.status,
+  };
+}
+
+/**
+ * 5-minute watchdog sweep for MP shipments stranded in `ready_to_ship` without a scheduled Kuaidi100 task
+ * (e.g., transient Kuaidi100 HTTP timeout during weaver seal). Retries <= 2 times then escalates to `manual_hold`.
+ */
+export async function sweepUnscheduledMpPickups(
+  db: DbAdapter,
+  logisticsPort: LogisticsPort,
+  nowUtcMs: number = Date.now(),
+): Promise<{ retriedCount: number; scheduledCount: number; escalatedToManualHold: number }> {
+  const pendingShips = await db.find<ShipmentDoc>(
+    COLLECTIONS.SHIPMENTS,
+    (s) => s.fulfillMode === "kuaidi100_pickup" && s.status === "ready_to_ship" && !s.kuaidi100TaskId,
+  );
+  let retriedCount = 0;
+  let scheduledCount = 0;
+  let escalatedToManualHold = 0;
+  for (const s of pendingShips) {
+    const pkg = await db.get<OrderPackageDoc>(COLLECTIONS.ORDER_PACKAGES, s.packageId);
+    if (!pkg || pkg.status !== "ready_to_ship") continue;
+    retriedCount++;
+    const res = await scheduleMpPickupForShipment(db, s.packageId, logisticsPort, nowUtcMs);
+    if (res.scheduled) scheduledCount++;
+    if (res.movedToManualHold) escalatedToManualHold++;
+  }
+  return { retriedCount, scheduledCount, escalatedToManualHold };
 }
 
 /**

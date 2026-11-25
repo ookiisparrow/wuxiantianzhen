@@ -74,5 +74,23 @@ export function createAdminApiClient(opts: AdminClientOptions) {
     exportSupplierYarnCsv: (weekKey: string) => invoke("admin.exportSupplierYarnCsv", { weekKey }),
     exportBankPayoutCsv: () => invoke("admin.exportBankPayoutCsv"),
     confirmBankPayoutPaid: (batchId: string) => invoke("admin.confirmBankPayoutPaid", { batchId }),
+    importDouyinLogistics: (params: {
+      rows: Array<{ externalOrderId: string; trackingNo?: string; carrierCode?: string; signedAtMs?: number }>;
+    }) => invoke("admin.importDouyinLogistics", params),
+    upsertYarn: (params: Record<string, unknown>) => invoke("admin.upsertYarn", params),
+    upsertPatternModule: (params: Record<string, unknown>) => invoke("admin.upsertPatternModule", params),
+    upsertPattern: (params: Record<string, unknown>) => invoke("admin.upsertPattern", params),
+    upsertStyle: (params: Record<string, unknown>) => invoke("admin.upsertStyle", params),
+    upsertProduct: (params: Record<string, unknown>) => invoke("admin.upsertProduct", params),
+    generateBagStickers: (params: { weaverId: string; batchId: string; codes: string[] }) =>
+      invoke("admin.generateBagStickers", params),
+    setConfig: (params: { key: string; value: Record<string, unknown> }) => invoke("admin.setConfig", params),
+    getConfig: (key: string) => invoke("admin.getConfig", { key }),
+    reassignManualHold: (params: { packageId: string; targetWeaverId?: string }) =>
+      invoke("admin.reassignManualHold", params),
+    listTickets: (params: { status?: "open" | "processing" | "resolved"; userId?: string; role?: "buyer" | "weaver" } = {}) =>
+      invoke("admin.listTickets", params),
+    resolveTicket: (params: { ticketId: string; reply: string; nextStatus?: "processing" | "resolved" }) =>
+      invoke("admin.resolveTicket", params),
   };
 }

@@ -26,6 +26,8 @@ const TIMER_TRIGGER_TO_ACTION: Record<string, string> = {
   dispatchHourly: "cron.dispatchTick",
   fiveMinWatchdog: "cron.fiveMinuteWatchdog",
   dailySettle0200: "cron.dailySettleAndReconcile",
+  dueAndStockAlertDaily9am: "cron.dailyDueAndStockAlert",
+  weeklyGovernanceMonday9am: "cron.weeklyGovernance",
 };
 
 /**

@@ -20,6 +20,7 @@ import {
   type OrderPackageDoc,
   type PaymentDoc,
   type ProductDoc,
+  type RecruitFunnelDoc,
   type RefundDoc,
   type ShipmentDoc,
   type StyleDoc,
@@ -37,6 +38,7 @@ import {
   newOrderId,
   newPackageId,
   paymentId,
+  recruitFunnelId,
   refundId,
   shipmentId,
 } from "../kit/ids.ts";
@@ -323,6 +325,20 @@ export async function handleWxPaySuccessWebhook(
       rawNotifyAt: now,
     });
     await recordWeaverDeposit(db, depPay.buyerUserId, LEDGER_ACCOUNT_CODES.ASSET_WXPAY_CASH, now);
+    await db.atomicUpdate<RecruitFunnelDoc>(
+      COLLECTIONS.RECRUIT_FUNNEL,
+      recruitFunnelId(depPay.buyerUserId),
+      () => true,
+      (f) => ({
+        ...f,
+        depositStatus: "paid",
+        depositChannel: "mp_buyer_cashier",
+        depositRefId: params.orderId,
+        depositPaidAt: now,
+        version: f.version + 1,
+        updatedAt: now,
+      }),
+    );
     return { packageId: params.orderId, alreadyProcessed: false };
   }
 
@@ -442,13 +458,36 @@ export async function requestMpBuyerRefund(
   if (ord.status === "refunded") {
     throw new AppError(ERROR_CODES.DUPLICATE_IDEMPOTENCY_KEY, "该订单已完成退款，请勿重复申请");
   }
-  if (ord.status !== "paid") {
+  if (ord.status !== "paid" && ord.status !== "fulfilled") {
     throw new AppError(ERROR_CODES.VALIDATION_ERROR, "当前订单未支付，不可发起退款");
   }
 
   const pkgs = await db.find<OrderPackageDoc>(COLLECTIONS.ORDER_PACKAGES, (p) => p.orderIds.includes(ord._id));
   const pkg = pkgs[0];
   if (!pkg) throw new AppError(ERROR_CODES.NOT_FOUND, "未找到关联履约包裹");
+
+  if (
+    pkg.status === "settled_ready" ||
+    pkg.status === "settled" ||
+    (pkg.status === "signed" && pkg.settleEligibleAt !== undefined && now >= pkg.settleEligibleAt)
+  ) {
+    throw new AppError(
+      ERROR_CODES.VALIDATION_ERROR,
+      "该包裹已超签收后7天售后期并进入工价结算，请提交售后工单联系人工处理",
+    );
+  }
+  if (pkg.status === "settled_ready" || pkg.status === "settled") {
+    throw new AppError(ERROR_CODES.VALIDATION_ERROR, "包裹已满 7 天进入织女结款期，线上售后通道已关闭，请提交客服工单处理");
+  }
+  if (params.trigger === "buyer_return_7d" && pkg.settleEligibleAt !== undefined && now >= pkg.settleEligibleAt) {
+    throw new AppError(ERROR_CODES.VALIDATION_ERROR, "已超过签收后 7 天无理由退货窗口");
+  }
+  if (pkg.status === "settled_ready" || pkg.status === "settled") {
+    throw new AppError(ERROR_CODES.VALIDATION_ERROR, "包裹已过7天锁定期并进入工价结算，不可线上自助退单，请提交客服工单处理");
+  }
+  if (params.trigger === "buyer_return_7d" && pkg.settleEligibleAt !== undefined && now >= pkg.settleEligibleAt) {
+    throw new AppError(ERROR_CODES.VALIDATION_ERROR, "已超过签收后7天无理由退货时效");
+  }
 
   const existingRefunds = await db.find<RefundDoc>(COLLECTIONS.REFUNDS, (r) => r.orderId === ord._id);
   if (existingRefunds.some((r) => ["pending_review", "refunding", "succeeded"].includes(r.status))) {

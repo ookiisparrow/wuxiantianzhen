@@ -6,8 +6,9 @@ Mini-Program to cloud full lifecycle verifies end-to-end cross-role state transi
 
 - `mp-buyer-order-lock` logs in an `mp-buyer` user, saves a `buyer_recv` address, creates a `ready_stock` order locking 1 unit on `weaverStock`, and commits payment via `webhook.wxpay`.
 - `mp-dispatch-stock-reuse` dispatches the paid order at `stock` tier (`isReadyStockReuse: true`) via `cron.dispatchTick`.
-- `mp-weaver-accept-and-seal` accepts the offer on `mp-weaver` (jumping directly to `awaiting_seal` without deducting `yarnInventory`) and seals with a `bagStickers` code into `ready_to_ship`.
-- `mp-client-boundary-guard` rejects direct `mp-buyer` / `mp-weaver` client attempts to invoke `webhook.wxpay` or `cron.*`.
+- `mp-weaver-accept-and-seal` accepts the offer on `mp-weaver` (jumping directly to `awaiting_seal` without deducting `yarnInventory`), seals with a `bagStickers` code into `ready_to_ship`, and schedules Kuaidi100 doorstep pickup (`shipments.status === "pickup_scheduled"`).
+- `kuaidi100-and-governance-crons` advances `webhook.kuaidi100` (`picked_up -> signed`), handles `weaver.submitTicket` / `admin.resolveTicket`, and runs `cron.dailyDueAndStockAlert` and `cron.weeklyGovernance` (`config/recruitGate`).
+- `mp-client-boundary-guard` rejects direct `mp-buyer`, `mp-weaver`, or unauthenticated `http_gateway` attempts to invoke `cron.*`, and blocks Mini-Program clients from invoking `webhook.*`.
 
 ## How to get to it (user POV)
 
@@ -25,8 +26,8 @@ Preconditions:
 - **Buyer login & address.** Run `control-wxtz.mjs api --run-id <RUN_ID> --role mp-buyer --openid oid_b_e2e --action auth.login --payload '{"phone":"13955556666"}'` and `--action buyer.saveAddress --payload '{"contactName":"陈买家","contactPhone":"13955556666","province":"浙江省","city":"杭州市","district":"西湖区","detail":"文三路 99 号","isDefault":true}'`. Record returned address `_id`.
 - **Verify client boundary guard.** Run `control-wxtz.mjs api --run-id <RUN_ID> --role mp-buyer --openid oid_b_e2e --action cron.dispatchTick --allow-error true`. Confirm `ok: false` and `code: "FORBIDDEN"`.
 - **Create order & pay webhook.** Run `control-wxtz.mjs api --run-id <RUN_ID> --role mp-buyer --openid oid_b_e2e --action buyer.createOrder --payload '{"productId":"prod_sasa_ready","receiverAddrId":"<ADDR_ID>","qty":1}'`. Then run `--role internal --action webhook.wxpay --payload '{"orderId":"<ORD_ID>","wxTransactionId":"WX_VERIFY_01"}'`.
-- **Dispatch & weaver accept.** Run `--role internal --action cron.dispatchTick`. Inspect the created package to note `assignedWeaverId` (`usr_w_live_01` or `usr_w_mp_02`), then call `--role mp-weaver --openid <WEAVER_OPENID> --action weaver.respondOffer --payload '{"packageId":"<PKG_ID>","decision":"accept"}'`. Confirm returned `status === "awaiting_seal"`.
-- **Ledger reconciliation check.** Run `control-wxtz.mjs api --run-id <RUN_ID> --role internal --action cron.dailySettleAndReconcile` and confirm `mismatches: []`.
+- **Dispatch, weaver accept & Kuaidi100 callback.** Run `--role internal --action cron.dispatchTick`. Inspect the created package to note `assignedWeaverId` (`usr_w_live_01` or `usr_w_mp_02`), call `--role mp-weaver --openid <WEAVER_OPENID> --action weaver.respondOffer --payload '{"packageId":"<PKG_ID>","decision":"accept"}'`, seal via `--action weaver.sealAndSubmit --payload '{"packageId":"<PKG_ID>","bagStickerCode":"<BAG_CODE>","sealedPhotoFileId":"cloud://seal_01"}'`, and advance carrier callbacks via `--role internal --action webhook.kuaidi100 --payload '{"packageId":"<PKG_ID>","state":"picked_up","trackingNo":"ZT_VERIFY_01","shippingCostFen":550}'` and `{"packageId":"<PKG_ID>","state":"signed","trackingNo":"ZT_VERIFY_01"}`.
+- **Governance & ledger reconciliation check.** Run `control-wxtz.mjs api --run-id <RUN_ID> --role internal --action cron.weeklyGovernance` and `--action cron.dailySettleAndReconcile`, confirming `mismatches: []`.
 
 ## Gotchas
 

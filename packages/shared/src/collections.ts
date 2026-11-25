@@ -2,7 +2,7 @@
  * Single source of truth for all CloudBase collection names.
  * Mirrors docs/07 §3 (25 core collections + 4 system collections).
  */
-export const COLLECTIONS = {
+const BASE_COLLECTIONS = {
   // 3.1 账号、地址、准入漏斗与志愿者 (4)
   USERS: "users",
   ADDRESSES: "addresses",
@@ -46,6 +46,19 @@ export const COLLECTIONS = {
   CONFIG: "config",
 } as const;
 
-export type CollectionName = (typeof COLLECTIONS)[keyof typeof COLLECTIONS];
+type CoreCollectionMap = typeof BASE_COLLECTIONS;
 
-export const ALL_COLLECTION_NAMES: readonly CollectionName[] = Object.values(COLLECTIONS);
+export type CollectionName = CoreCollectionMap[keyof CoreCollectionMap];
+
+export const ALL_COLLECTION_NAMES: readonly CollectionName[] = Object.values(BASE_COLLECTIONS);
+
+export const COLLECTIONS: CoreCollectionMap & { readonly SYSTEM_CONFIG: "config" } = Object.defineProperty(
+  { ...BASE_COLLECTIONS },
+  "SYSTEM_CONFIG",
+  {
+    value: "config",
+    enumerable: false,
+    writable: false,
+    configurable: false,
+  },
+) as CoreCollectionMap & { readonly SYSTEM_CONFIG: "config" };

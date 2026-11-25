@@ -6,6 +6,8 @@ import type {
   PhotoReviewStatus,
   RecruitFunnelStage,
   RefundStatus,
+  ShipmentStatus,
+  TicketStatus,
   YarnClaimStatus,
 } from "./status.ts";
 
@@ -292,6 +294,7 @@ export interface OrderPackageDoc {
   queueSeq?: number;
   isReadyStockReuse: boolean;
   attemptCount: number;
+  lastManualResetAttempt?: number;
   reviewMode: "required" | "sampled" | "skip";
   bagQrCode?: string;
   dispatchableAt: number;
@@ -392,14 +395,8 @@ export interface ShipmentDoc {
   selfShipReimbFen?: Fen;
   insuredFeeFen?: Fen;
   pickupRetryCount: number;
-  status:
-    | "awaiting_seal"
-    | "ready_to_ship"
-    | "pickup_scheduled"
-    | "in_transit"
-    | "signed"
-    | "lost_or_damaged"
-    | "cancelled";
+  status: ShipmentStatus;
+  version: number;
   updatedAt: number;
 }
 
@@ -446,9 +443,10 @@ export interface TicketDoc {
   relatedId?: string;
   content: string;
   photoFileIds: string[];
-  status: "open" | "processing" | "resolved";
+  status: TicketStatus;
   reply?: string;
   handlerId?: string;
+  version: number;
   createdAt: number;
   updatedAt: number;
 }
@@ -554,6 +552,7 @@ export interface LedgerEntryDoc {
     | "quality_refund"
     | "loss_comp"
     | "payout"
+    | "ship_fee"
     | "adjustment";
   bizId: string;
   payeeId?: string;
@@ -584,4 +583,25 @@ export interface StyleEnrollmentDoc {
   certifiedBy?: string;
   certifiedAt?: number;
   createdAt: number;
+}
+
+// System collections
+export interface NotificationDoc {
+  _id: string;
+  userId: string;
+  channel: "subscribe" | "sms" | "restock_watch" | "system_alert";
+  scene: string;
+  skuCode?: string;
+  status: "queued" | "sent" | "watching" | "notified";
+  payload?: Record<string, unknown>;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface SystemConfigDoc {
+  _id: string;
+  value: Record<string, unknown>;
+  updatedBy?: string;
+  updatedAt: number;
+  [key: string]: unknown;
 }

@@ -611,7 +611,7 @@ async function main() {
             app: body.app,
             openid: body.openid,
             unionid: body.unionid,
-            invocationSource: isInternal ? "http_gateway" : body.openid ? "mp_client" : "http_gateway",
+            invocationSource: isInternal ? "internal" : body.openid ? "mp_client" : "http_gateway",
             adminJwtSecret: jwtSecret,
             adminToken,
             nowUtcMs: typeof body.nowUtcMs === "number" ? body.nowUtcMs : Date.now(),

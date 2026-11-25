@@ -367,8 +367,17 @@ export async function recordWeaverDeposit(
   cashAccount: typeof LEDGER_ACCOUNT_CODES.ASSET_WXPAY_CASH | typeof LEDGER_ACCOUNT_CODES.ASSET_BANK_CASH = LEDGER_ACCOUNT_CODES.ASSET_WXPAY_CASH,
   nowUtcMs: number = Date.now(),
 ): Promise<{ posted: boolean; alreadyExists: boolean }> {
+  const acc = await db.get<WeaverAccountDoc>(COLLECTIONS.WEAVER_ACCOUNTS, weaverAccountId(userId));
+  if (acc && acc.depositFen >= WEAVER_DEPOSIT_FEN) {
+    return { posted: false, alreadyExists: true };
+  }
+  const priorExits = await db.find<LedgerEntryDoc>(
+    COLLECTIONS.LEDGER_ENTRIES,
+    (e) => e.payeeId === userId && e.eventType === "deposit_out",
+  );
+  const cycle = priorExits.length + 1;
   return postLedgerEntry(db, {
-    _id: ledgerKeyDepositIn(userId),
+    _id: ledgerKeyDepositIn(userId, cycle),
     eventType: "deposit_in",
     bizId: userId,
     payeeId: userId,
@@ -392,8 +401,13 @@ export async function refundWeaverDeposit(
   cashAccount: typeof LEDGER_ACCOUNT_CODES.ASSET_WXPAY_CASH | typeof LEDGER_ACCOUNT_CODES.ASSET_BANK_CASH = LEDGER_ACCOUNT_CODES.ASSET_WXPAY_CASH,
   nowUtcMs: number = Date.now(),
 ): Promise<{ posted: boolean; alreadyExists: boolean }> {
+  const priorOuts = await db.find<LedgerEntryDoc>(
+    COLLECTIONS.LEDGER_ENTRIES,
+    (e) => e.payeeId === userId && e.eventType === "deposit_out",
+  );
+  const cycle = priorOuts.length + 1;
   return postLedgerEntry(db, {
-    _id: ledgerKeyDepositOut(userId),
+    _id: ledgerKeyDepositOut(userId, cycle),
     eventType: "deposit_out",
     bizId: userId,
     payeeId: userId,
