@@ -1,0 +1,17 @@
+{
+  "name": "@wxtz/monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "guard:env": "node scripts/guard-env.mjs",
+    "test": "node --test packages/shared/src/__tests__/*.test.ts packages/cloud/src/__tests__/*.test.ts",
+    "verify": "npm run guard:env && npm run test"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  }
+}

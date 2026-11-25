@@ -69,7 +69,7 @@ Web 端无微信 `OPENID`，严禁前端暴露任何云开发密钥。`admin` �
 
 ---
 
-## 3. 全量数据库 Schema（24 核心集合 + 4 系统集合）
+## 3. 全量数据库 Schema（25 核心集合 + 4 系统集合）
 
 > 约定：时间字段统一为 UTC 毫秒时间戳（`number`），展示与业务日界线统一按 `CST (UTC+8)` 计算；金额字段均以 `Fen` 结尾（整数分）。
 
@@ -119,7 +119,7 @@ Web 端无微信 `OPENID`，严禁前端暴露任何云开发密钥。`admin` �
     * 单色含损耗克重：`consumedG = ceil(netWeightG * (10000 + wasteRateBp) / 10000)`
     * 单件材料费 `materialCostFen = sum( ceil(consumedG * yarn.unitCostFen / yarn.unitWeightG) ) + extraAccessoryCostFen`
     * `yarnPoolAccrualFen`（每单划入织女线材池，**≥ `materialCostFen` 且直接计入产品定价成本**，从数学上保证线材池永不亏空）
-  * 费用与版权：`craftFeeFen`, `royaltyFen`（自有款为 0）, `weaverShipShareFen`（织女分摊固定邮费，如 300 分）, `ownerType: 'platform' | 'creator'`, `licenseDocId`, `status: 'draft' | 'active' | 'archived'`
+  * 费用、博主把关与版权：`craftFeeFen`, `royaltyFen`（创作固定分成，自有款为 0）, `creatorQcFeeFen`（**预留接缝**：博主亲自审照把关分成，自有款为 0）, `trafficCommissionBp`（**预留接缝**：博主自带流量成交分成万分比）, `creatorUserId?`（原创手工博主 `userId`）, `tutorialVideoUrl?`（博主教学视频）, `qcOwner: 'volunteer_or_admin' | 'creator_led'`（开启 `creator_led` 时该款成品照与试做照直接推给原创博主把关，超时运营兜底）, `requiresEnrollment: boolean`（是否限量报名特色材料款）, `enrollmentQuota?: number`, `enrollmentMinOrderCount?: number`, `weaverShipShareFen`（织女分摊固定邮费，如 300 分）, `ownerType: 'platform' | 'creator'`, `licenseDocId`, `status: 'draft' | 'active' | 'archived'`
 
 #### 6) `products`（小程序买家端上架商品）
 * `_id`：`prod_<ulid>`
@@ -142,7 +142,7 @@ Web 端无微信 `OPENID`，严禁前端暴露任何云开发密钥。`admin` �
 
 #### 9) `orders`（买家订单主表，与 `orderPackages` 一对多）
 * `_id`：`ord_<ulid>`
-* 字段：`channel: 'douyin_online' | 'mp_wechat'`, `externalOrderId?`（抖店订单号）, `buyerUserId?`（小程序订单必填）, `receiverAddrId?`（小程序订单引用 `addresses._id`）, `productId?`, `skuCode`, `qty: number`（小程序首版一单一款）, `totalPaidFen`, `buyerShipFeeFen`, `paymentId?`, `status: 'unpaid' | 'paid' | 'fulfilled' | 'refunding' | 'refunded' | 'closed'`, `paidAt?`, `createdAt`, `updatedAt`
+* 字段：`channel: 'douyin_online' | 'mp_wechat'`, `externalOrderId?`（抖店订单号）, `buyerUserId?`（小程序订单必填）, `referrerCreatorId?`（**预留接缝**：短视频/专属码引流归因的手工博主 `userId`）, `receiverAddrId?`（小程序订单引用 `addresses._id`）, `productId?`, `skuCode`, `qty: number`（小程序首版一单一款）, `totalPaidFen`, `buyerShipFeeFen`, `paymentId?`, `status: 'unpaid' | 'paid' | 'fulfilled' | 'refunding' | 'refunded' | 'closed'`, `paidAt?`, `createdAt`, `updatedAt`
 * 索引：`(buyerUserId, createdAt)`, `(channel, status, createdAt)`
 
 #### 10) `orderPackages`（核心履约单元——订单包）
@@ -229,6 +229,11 @@ Web 端无微信 `OPENID`，严禁前端暴露任何云开发密钥。`admin` �
 * `_id`：`acc_${userId}`（确定性主键）
 * 字段：`userId`, `yarnPoolBalanceFen: number`, `payableBalanceFen: number`, `depositFen: number`, `version: number`, `updatedAt`
 * **并发安全与对账铁律**：`ledgerEntries` 仍是唯一账务事实；`weaverAccounts` 用于高并发防透支原子锁（申领扣池与退出退还统一执行 DB 条件更新 `where({ _id, yarnPoolBalanceFen: _.gte(costFen) })`）；每日 `cron` 全量校验 `weaverAccounts === sum(ledgerEntries)`，发现 1 分差异立即告警。
+
+#### 25) `styleEnrollments`（特色款限量报名池——手工博主生态预留接缝）
+* `_id`：`enroll_${skuCode}_${weaverId}`（确定性主键）
+* 字段：`skuCode`, `weaverId`, `creatorUserId`, `status: 'applied' | 'materials_ready' | 'certified' | 'revoked'`, `certifiedBy?`, `certifiedAt?`, `createdAt`
+* **用途**：针对用到非 12 基础色特殊材料的博主款，限量开放织女报名名额；派单引擎只需一行判断（当 `style.requiresEnrollment=true` 时，仅从 `status='certified'` 的已报名织女中派单），彻底解决特色款备料与囤货风险。阶段 1 建表留接缝，自有款跑顺后即无缝启用。
 
 #### 系统支撑集合（4 个）
 * `settlementBatches`（`_id: batch_${YYYYMMDD}`）：14 天批量结款批次、人数、总金额、**网银标准批量代发模板（招行/网商银行格式）Excel 导出记录**、打款回执一键核销态。

@@ -1,0 +1,6 @@
+{
+  "name": "@wxtz/mp-buyer",
+  "version": "0.1.0",
+  "private": true,
+  "description": "无限天真买家/粉丝端微信小程序（电商类目，含粉丝志愿者盲审工作台）"
+}
