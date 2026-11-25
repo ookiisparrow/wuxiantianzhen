@@ -6,10 +6,12 @@ import {
   ORDER_PACKAGE_STATUS_SPEC,
   RECRUIT_FUNNEL_SPEC,
   YARN_CLAIM_STATUS_SPEC,
+  ZERO_FEN,
   addAwakeHoursCst,
   asFen,
   calculateBomMaterialCost,
   canTransition,
+  composeModularPatternAndBom,
   computeSafeLiveStockPlan,
   computeWeaverFreeMin,
   formatCstWeekKey,
@@ -17,11 +19,12 @@ import {
   formatYuan,
 } from "../index.ts";
 
-test("COLLECTIONS contains all 25 core + 4 system = 29 unique collections", () => {
-  assert.equal(ALL_COLLECTION_NAMES.length, 29);
-  assert.equal(new Set(ALL_COLLECTION_NAMES).size, 29);
+test("COLLECTIONS contains all 26 core + 4 system = 30 unique collections", () => {
+  assert.equal(ALL_COLLECTION_NAMES.length, 30);
+  assert.equal(new Set(ALL_COLLECTION_NAMES).size, 30);
   assert.equal(COLLECTIONS.WEAVER_ACCOUNTS, "weaverAccounts");
   assert.equal(COLLECTIONS.STYLE_ENROLLMENTS, "styleEnrollments");
+  assert.equal(COLLECTIONS.PATTERN_MODULES, "patternModules");
 });
 
 test("Fen enforces integer safety and BOM material cost rounds up to prevent deficit", () => {
@@ -120,4 +123,54 @@ test("Capacity algorithm enforces time x yarn dual-bucket and prevents double-se
   assert.equal(split["BEAR-WHITE"]?.craftCapacity, 2);
   assert.equal(split["RABBIT-PINK"]?.craftCapacity, 3);
   assert.equal(split["RABBIT-PINK"]?.totalSafeQty, 4);
+});
+
+test("Modular pattern composer merges reusable blocks, custom color overrides, standardMin and BOM cost", () => {
+  const bodyMod = {
+    _id: "mod_sasa_body_v1",
+    name: "通用sasa身体",
+    category: "body" as const,
+    standardMin: 60,
+    yarnBom: [{ yarnCode: "WHITE", netWeightG: 15 }],
+    extraAccessoryCostFen: asFen(100), // eyes + stuffing
+    steps: [{ rowNo: 1, text: "身体环起 6X", stitchCount: 6 }],
+    authorUserId: "usr_creator",
+    status: "approved" as const,
+    updatedAt: 1000,
+  };
+  const beretMod = {
+    _id: "mod_beret_v1",
+    name: "可换色贝雷帽",
+    category: "outfit" as const,
+    standardMin: 25,
+    yarnBom: [{ yarnCode: "PINK", netWeightG: 8, slotKey: "HAT_MAIN" }],
+    extraAccessoryCostFen: ZERO_FEN,
+    steps: [{ rowNo: 1, text: "帽子环起 8X", stitchCount: 8 }],
+    authorUserId: "usr_creator",
+    status: "approved" as const,
+    updatedAt: 1000,
+  };
+
+  // Customize HAT_MAIN from default PINK to MINT!
+  const composed = composeModularPatternAndBom(
+    [
+      { module: bodyMod },
+      { module: beretMod, colorSlotOverrides: { HAT_MAIN: "MINT" } },
+    ],
+    {
+      WHITE: { unitWeightG: 50, unitCostFen: asFen(500) },
+      PINK: { unitWeightG: 50, unitCostFen: asFen(500) },
+      MINT: { unitWeightG: 50, unitCostFen: asFen(600) },
+    },
+    1000,
+  );
+
+  assert.equal(composed.standardMin, 85);
+  assert.equal(composed.assembledParts.length, 2);
+  assert.deepEqual(composed.mergedYarnBom, [
+    { yarnCode: "WHITE", netWeightG: 15 },
+    { yarnCode: "MINT", netWeightG: 8 },
+  ]);
+  // WHITE: ceil(16.5)=17g @ 500/50 = 170 Fen; MINT: ceil(8.8)=9g @ 600/50 = ceil(108) = 108 Fen; +100 acc = 378 Fen
+  assert.equal(composed.bomCost.totalMaterialCostFen, 378);
 });

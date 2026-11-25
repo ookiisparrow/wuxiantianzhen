@@ -1,50 +1,29 @@
-import { computeWeaverStyleUnits } from "../../../shared/src/capacity.ts";
-import { COLLECTIONS } from "../../../shared/src/collections.ts";
-import { DAY_MS, HOUR_MS, addAwakeHoursCst } from "../../../shared/src/cst.ts";
-import { AppError, ERROR_CODES } from "../../../shared/src/errors.ts";
-import { DISPATCH_OFFER_STATUS_SPEC, ORDER_PACKAGE_STATUS_SPEC } from "../../../shared/src/status.ts";
-import type {
-  DispatchOfferDoc,
-  OrderPackageDoc,
-  PatternDoc,
-  RegionCode,
-  StyleDoc,
-  StyleEnrollmentDoc,
-  UserDoc,
-  WeaverStockDoc,
-  YarnCatalogDoc,
-} from "../../../shared/src/schemas.ts";
+import {
+  COLLECTIONS,
+  DAY_MS,
+  HOUR_MS,
+  addAwakeHoursCst,
+  AppError,
+  ERROR_CODES,
+  DISPATCH_OFFER_STATUS_SPEC,
+  ORDER_PACKAGE_STATUS_SPEC,
+  computeWeaverStyleUnits,
+  inferRegionFromProvince,
+  type DispatchOfferDoc,
+  type OrderPackageDoc,
+  type PatternDoc,
+  type StyleDoc,
+  type StyleEnrollmentDoc,
+  type UserDoc,
+  type WeaverStockDoc,
+  type YarnCatalogDoc,
+} from "@wxtz/shared";
 import { assertNotSelfOrder } from "../kit/auth.ts";
 import type { DbAdapter } from "../kit/db.ts";
 import { dispatchOfferId, weaverStockId } from "../kit/ids.ts";
+import { compactWeaverQueue } from "../kit/queue.ts";
 import { transitionStatus } from "../kit/transition.ts";
 import { consumeYarnForPackage } from "../kit/yarnInventory.ts";
-
-const PROVINCE_TO_REGION: Readonly<Record<string, RegionCode>> = {
-  上海市: "jzh",
-  上海: "jzh",
-  江苏省: "jzh",
-  江苏: "jzh",
-  浙江省: "jzh",
-  浙江: "jzh",
-  安徽省: "jzh",
-  安徽: "jzh",
-  北京市: "north",
-  河北省: "north",
-  山东省: "north",
-  河南省: "north",
-  云南省: "sw_ygc",
-  贵州省: "sw_ygc",
-  四川省: "sw_ygc",
-  重庆市: "sw_ygc",
-  陕西省: "nw",
-  甘肃省: "nw",
-  新疆维吾尔自治区: "nw",
-};
-
-export function inferRegionFromProvince(province: string): RegionCode {
-  return PROVINCE_TO_REGION[province.trim()] ?? "south_central";
-}
 
 /**
  * Promotes `confirming` Douyin packages whose merge window has elapsed into `waiting_dispatch`,
@@ -628,27 +607,4 @@ export async function sweepOffersAndStalledPackages(
   }
 
   return { timedOutOffers, promptedStalls, reclaimedStalls };
-}
-
-export async function compactWeaverQueue(db: DbAdapter, weaverId: string, nowUtcMs: number): Promise<void> {
-  const remaining = await db.find<OrderPackageDoc>(
-    COLLECTIONS.ORDER_PACKAGES,
-    (p) =>
-      p.assignedWeaverId === weaverId &&
-      ["making", "photo_review", "awaiting_seal"].includes(p.status) &&
-      p.queueSeq !== undefined,
-  );
-  remaining.sort((a, b) => (a.queueSeq ?? 999) - (b.queueSeq ?? 999));
-  for (let i = 0; i < remaining.length; i++) {
-    const targetSeq = i + 1;
-    const item = remaining[i]!;
-    if (item.queueSeq !== targetSeq) {
-      await db.atomicUpdate<OrderPackageDoc>(
-        COLLECTIONS.ORDER_PACKAGES,
-        item._id,
-        () => true,
-        (cur) => ({ ...cur, queueSeq: targetSeq, updatedAt: nowUtcMs }),
-      );
-    }
-  }
 }

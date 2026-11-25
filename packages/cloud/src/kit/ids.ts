@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import type { OrderChannel } from "../../../shared/src/schemas.ts";
+import type { OrderChannel } from "@wxtz/shared";
 
 function randomHex(bytes = 8): string {
   return crypto.randomBytes(bytes).toString("hex");

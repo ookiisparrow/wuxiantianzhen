@@ -1,5 +1,4 @@
-import type { CollectionName } from "../../../shared/src/collections.ts";
-import { AppError, ERROR_CODES } from "../../../shared/src/errors.ts";
+import { AppError, ERROR_CODES, type CollectionName } from "@wxtz/shared";
 
 export interface BaseDoc {
   _id: string;

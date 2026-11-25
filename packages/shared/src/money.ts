@@ -58,6 +58,7 @@ export function formatYuan(fen: Fen): string {
 export interface YarnBomEntry {
   yarnCode: string;
   netWeightG: number;
+  slotKey?: string; // optional customizable color-slot key, e.g. "HAT_MAIN"
 }
 
 export interface YarnPriceSpec {

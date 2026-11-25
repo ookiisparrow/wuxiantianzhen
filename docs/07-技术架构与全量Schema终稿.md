@@ -69,7 +69,7 @@ Web 端无微信 `OPENID`，严禁前端暴露任何云开发密钥。`admin` �
 
 ---
 
-## 3. 全量数据库 Schema（25 核心集合 + 4 系统集合）
+## 3. 全量数据库 Schema（26 核心集合 + 4 系统集合）
 
 > 约定：时间字段统一为 UTC 毫秒时间戳（`number`），展示与业务日界线统一按 `CST (UTC+8)` 计算；金额字段均以 `Fen` 结尾（整数分）。
 
@@ -126,9 +126,9 @@ Web 端无微信 `OPENID`，严禁前端暴露任何云开发密钥。`admin` �
 * 字段：`skuCode`, `saleType: 'made_to_order' | 'ready_stock'`（定制排单 3–5 天发 / 成品余货专区 48h 发）, `title`, `coverFileIds: string[]`, `detailFileIds: string[]`, `priceFen`, `buyerShipFeeFen`, `etaText: string`（默认“下单后 3–5 天内发出”或“现货 48 小时内发出”）, `sortOrder`, `isOnSale: boolean`, `updatedAt`
 * 索引：`(isOnSale, saleType, sortOrder)`, `skuCode`
 
-#### 7) `patterns`（歌词式图解）
-* `_id`：`pat_<ulid>`
-* 字段：`skuCode`, `version: number`, `parts: Array<{ partName, steps: Array<{ rowNo, text, stitchCount?, note?, imageFileId? }> }>`, `authorUserId`, `copyrightDocId`, `status: 'draft' | 'approved'`, `updatedAt`
+#### 7) `patterns`（歌词式图解）与 `patternModules`（可拼装图解部件库）
+* `patterns._id`：`pat_<ulid>`；字段：`skuCode`, `version`, `sourceModuleIds?: string[]`, `parts: Array<{ partName, moduleId?, steps: Array<{ rowNo, text, stitchCount?, note?, imageFileId? }> }>`, `authorUserId`, `copyrightDocId`, `status: 'draft' | 'approved'`, `updatedAt`
+* `patternModules._id`：`mod_<code>`；字段：`name`, `category: 'body' | 'head' | 'outfit' | 'accessory' | 'joint'`, `standardMin`, `yarnBom: Array<{ yarnCode, netWeightG, slotKey? }>`（支持按 `slotKey` 换色定制）, `extraAccessoryCostFen`, `steps`, `authorUserId`, `status`——由 `@wxtz/shared` 的 `composeModularPatternAndBom()` 自动合并局部工时、局部克重 BOM 与歌词步骤。
 
 #### 8) `weaverStock`（织女成品余货与淡季配额预备现货，带并发防超卖预占锁）
 * `_id`：`stock_${weaverId}_${skuCode}`（确定性主键）

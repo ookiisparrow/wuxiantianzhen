@@ -1,20 +1,22 @@
-import { COLLECTIONS } from "../../../shared/src/collections.ts";
-import { DAY_MS } from "../../../shared/src/cst.ts";
-import { AppError, ERROR_CODES } from "../../../shared/src/errors.ts";
-import { WEAVER_DEPOSIT_FEN } from "../../../shared/src/money.ts";
-import { RECRUIT_FUNNEL_SPEC, canTransition } from "../../../shared/src/status.ts";
-import type {
-  DepositChannel,
-  RecruitFunnelDoc,
-  RegionCode,
-  ShippingMode,
-  UserDoc,
-} from "../../../shared/src/schemas.ts";
+import {
+  COLLECTIONS,
+  DAY_MS,
+  AppError,
+  ERROR_CODES,
+  WEAVER_DEPOSIT_FEN,
+  RECRUIT_FUNNEL_SPEC,
+  canTransition,
+  inferRegionFromProvince,
+  type DepositChannel,
+  type RecruitFunnelDoc,
+  type RegionCode,
+  type ShippingMode,
+  type UserDoc,
+} from "@wxtz/shared";
 import type { DbAdapter } from "../kit/db.ts";
 import { recruitFunnelId } from "../kit/ids.ts";
 import { recordWeaverDeposit } from "../kit/ledger.ts";
 import { createBase12Inventory } from "../kit/yarnInventory.ts";
-import { inferRegionFromProvince } from "./dispatch.ts";
 
 /**
  * Finalized 4-step weaver onboarding funnel (docs/07 §4.2, Round 9 Q5):

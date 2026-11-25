@@ -1,11 +1,57 @@
-import { COLLECTIONS } from "../../../shared/src/collections.ts";
-import { MINUTE_MS } from "../../../shared/src/cst.ts";
-import { AppError, ERROR_CODES } from "../../../shared/src/errors.ts";
-import type { WeaverStockDoc } from "../../../shared/src/schemas.ts";
+import {
+  COLLECTIONS,
+  MINUTE_MS,
+  AppError,
+  ERROR_CODES,
+  type OrderPackageDoc,
+  type WeaverStockDoc,
+} from "@wxtz/shared";
 import type { DbAdapter } from "./db.ts";
 import { weaverStockId } from "./ids.ts";
 
 export const STOCK_RESERVE_TTL_MS = 15 * MINUTE_MS;
+
+/**
+ * Registers items from a mid-making cancelled core package into `weaverStock` for priority reuse.
+ */
+export async function registerCancelledPackageToWeaverStock(
+  db: DbAdapter,
+  pkg: OrderPackageDoc,
+  nowUtcMs: number,
+): Promise<void> {
+  if (!pkg.assignedWeaverId) return;
+  for (const item of pkg.itemsSnapshot) {
+    const id = weaverStockId(pkg.assignedWeaverId, item.skuCode);
+    const existing = await db.get<WeaverStockDoc>(COLLECTIONS.WEAVER_STOCK, id);
+    if (!existing) {
+      await db.insert<WeaverStockDoc>(COLLECTIONS.WEAVER_STOCK, {
+        _id: id,
+        weaverId: pkg.assignedWeaverId,
+        skuCode: item.skuCode,
+        availableQty: item.qty,
+        reservedQty: 0,
+        reservations: [],
+        items: [{ sourceType: "cancelled_order", sourcePkgId: pkg._id, createdAt: nowUtcMs }],
+        oldestCreatedAt: nowUtcMs,
+        version: 1,
+        updatedAt: nowUtcMs,
+      });
+    } else {
+      await db.atomicUpdate<WeaverStockDoc>(
+        COLLECTIONS.WEAVER_STOCK,
+        id,
+        () => true,
+        (cur) => ({
+          ...cur,
+          availableQty: cur.availableQty + item.qty,
+          items: [...cur.items, { sourceType: "cancelled_order", sourcePkgId: pkg._id, createdAt: nowUtcMs }],
+          version: cur.version + 1,
+          updatedAt: nowUtcMs,
+        }),
+      );
+    }
+  }
+}
 
 /**
  * Atomic 15-minute reservation lock on ready stock (`weaverStock`), preventing concurrent oversell.
@@ -30,7 +76,6 @@ export async function reserveReadyStock(
     COLLECTIONS.WEAVER_STOCK,
     id,
     (cur) => {
-      // Idempotent if same orderId already reserved
       if (cur.reservations.some((r) => r.orderId === params.orderId)) return false;
       return cur.availableQty >= params.qty;
     },

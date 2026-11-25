@@ -14,7 +14,7 @@ import {
   type StyleDoc,
   type UserDoc,
   type YarnCatalogDoc,
-} from "../../../shared/src/index.ts";
+} from "@wxtz/shared";
 import {
   InMemoryDb,
   activateFanVolunteerAfterExam,

@@ -1,6 +1,4 @@
-import type { CollectionName } from "../../../shared/src/collections.ts";
-import { AppError, ERROR_CODES } from "../../../shared/src/errors.ts";
-import { canTransition, type StateSpec } from "../../../shared/src/status.ts";
+import { AppError, ERROR_CODES, canTransition, type CollectionName, type StateSpec } from "@wxtz/shared";
 import type { BaseDoc, DbAdapter } from "./db.ts";
 
 export interface VersionedStatusDoc<S extends string> extends BaseDoc {

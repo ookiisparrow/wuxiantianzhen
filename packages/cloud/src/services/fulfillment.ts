@@ -1,27 +1,28 @@
-import { COLLECTIONS } from "../../../shared/src/collections.ts";
-import { HOUR_MS } from "../../../shared/src/cst.ts";
-import { AppError, ERROR_CODES } from "../../../shared/src/errors.ts";
-import { ZERO_FEN, addFen, type Fen } from "../../../shared/src/money.ts";
 import {
+  COLLECTIONS,
+  HOUR_MS,
+  AppError,
+  ERROR_CODES,
+  ZERO_FEN,
+  addFen,
   BAG_STICKER_STATUS_SPEC,
   ORDER_PACKAGE_STATUS_SPEC,
   PHOTO_REVIEW_STATUS_SPEC,
-} from "../../../shared/src/status.ts";
-import type {
-  BagStickerDoc,
-  OrderPackageDoc,
-  PhotoReviewDoc,
-  ShipmentDoc,
-  StyleDoc,
-  UserDoc,
-  VolunteerDoc,
-  VolunteerVoteDoc,
-} from "../../../shared/src/schemas.ts";
+  type Fen,
+  type BagStickerDoc,
+  type OrderPackageDoc,
+  type PhotoReviewDoc,
+  type ShipmentDoc,
+  type StyleDoc,
+  type UserDoc,
+  type VolunteerDoc,
+  type VolunteerVoteDoc,
+} from "@wxtz/shared";
 import type { DbAdapter } from "../kit/db.ts";
 import { bagStickerId, newReviewId, shipmentId, volunteerId, volunteerVoteId } from "../kit/ids.ts";
 import { accrueSettledPackage } from "../kit/ledger.ts";
+import { compactWeaverQueue } from "../kit/queue.ts";
 import { transitionStatus } from "../kit/transition.ts";
-import { compactWeaverQueue } from "./dispatch.ts";
 
 /**
  * Weaver submits finished work from `making`:

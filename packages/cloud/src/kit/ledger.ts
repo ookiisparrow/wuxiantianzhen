@@ -1,6 +1,7 @@
-import { COLLECTIONS } from "../../../shared/src/collections.ts";
-import { AppError, ERROR_CODES } from "../../../shared/src/errors.ts";
 import {
+  COLLECTIONS,
+  AppError,
+  ERROR_CODES,
   WEAVER_DEPOSIT_FEN,
   ZERO_FEN,
   addFen,
@@ -8,14 +9,12 @@ import {
   asNonNegativeFen,
   asPositiveFen,
   subFen,
-  type Fen,
-} from "../../../shared/src/money.ts";
-import {
   LEDGER_ACCOUNT_CODES,
+  type Fen,
   type LedgerEntryDoc,
   type LedgerLine,
   type WeaverAccountDoc,
-} from "../../../shared/src/schemas.ts";
+} from "@wxtz/shared";
 import type { DbAdapter } from "./db.ts";
 import {
   ledgerKeyAccrue,

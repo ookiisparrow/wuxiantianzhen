@@ -1,6 +1,11 @@
-import { COLLECTIONS } from "../../../shared/src/collections.ts";
-import { AppError, ERROR_CODES } from "../../../shared/src/errors.ts";
-import type { OrderPackageDoc, UserDoc, YarnInventorySlot } from "../../../shared/src/schemas.ts";
+import {
+  COLLECTIONS,
+  AppError,
+  ERROR_CODES,
+  type OrderPackageDoc,
+  type UserDoc,
+  type YarnInventorySlot,
+} from "@wxtz/shared";
 import type { DbAdapter } from "./db.ts";
 
 const DEFAULT_SKEIN_G = 50;

@@ -177,20 +177,37 @@ export interface ProductDoc {
   updatedAt: number;
 }
 
-// 7) patterns
+  // 7) patterns & patternModules (composable Lego pattern blocks)
+export interface PatternStep {
+  rowNo: number;
+  text: string;
+  stitchCount?: number;
+  note?: string;
+  imageFileId?: string;
+}
+
+export interface PatternModuleDoc {
+  _id: string; // mod_<code>
+  name: string;
+  category: "body" | "head" | "outfit" | "accessory" | "joint";
+  standardMin: number;
+  yarnBom: YarnBomEntry[];
+  extraAccessoryCostFen: Fen;
+  steps: PatternStep[];
+  authorUserId: string;
+  status: "draft" | "approved" | "archived";
+  updatedAt: number;
+}
+
 export interface PatternDoc {
   _id: string;
   skuCode: string;
   version: number;
+  sourceModuleIds?: string[];
   parts: Array<{
     partName: string;
-    steps: Array<{
-      rowNo: number;
-      text: string;
-      stitchCount?: number;
-      note?: string;
-      imageFileId?: string;
-    }>;
+    moduleId?: string;
+    steps: PatternStep[];
   }>;
   authorUserId: string;
   copyrightDocId?: string;

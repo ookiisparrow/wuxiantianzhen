@@ -4,4 +4,6 @@ export * from "./money.ts";
 export * from "./cst.ts";
 export * from "./status.ts";
 export * from "./schemas.ts";
+export * from "./regions.ts";
 export * from "./capacity.ts";
+export * from "./patternComposer.ts";

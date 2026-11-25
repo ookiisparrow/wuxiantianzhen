@@ -9,7 +9,7 @@ import {
   asFen,
   type OrderPackageDoc,
   type WeaverStockDoc,
-} from "../../../shared/src/index.ts";
+} from "@wxtz/shared";
 import {
   InMemoryDb,
   accrueSettledPackage,

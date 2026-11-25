@@ -1,26 +1,23 @@
 import crypto from "node:crypto";
-import { COLLECTIONS } from "../../../shared/src/collections.ts";
-import { DAY_MS } from "../../../shared/src/cst.ts";
-import { AppError, ERROR_CODES } from "../../../shared/src/errors.ts";
-import { ZERO_FEN, asNonNegativeFen, type Fen } from "../../../shared/src/money.ts";
-import { ORDER_PACKAGE_STATUS_SPEC } from "../../../shared/src/status.ts";
-import type {
-  ExternalOrderIndexDoc,
-  OrderDoc,
-  OrderPackageDoc,
-  PackageItemSnapshot,
-  ShipmentDoc,
-  StyleDoc,
-  WeaverStockDoc,
-} from "../../../shared/src/schemas.ts";
-import type { DbAdapter } from "../kit/db.ts";
 import {
-  externalOrderIndexId,
-  newOrderId,
-  newPackageId,
-  shipmentId,
-  weaverStockId,
-} from "../kit/ids.ts";
+  COLLECTIONS,
+  DAY_MS,
+  AppError,
+  ERROR_CODES,
+  ZERO_FEN,
+  asNonNegativeFen,
+  ORDER_PACKAGE_STATUS_SPEC,
+  type Fen,
+  type ExternalOrderIndexDoc,
+  type OrderDoc,
+  type OrderPackageDoc,
+  type PackageItemSnapshot,
+  type ShipmentDoc,
+  type StyleDoc,
+} from "@wxtz/shared";
+import type { DbAdapter } from "../kit/db.ts";
+import { externalOrderIndexId, newOrderId, newPackageId, shipmentId } from "../kit/ids.ts";
+import { registerCancelledPackageToWeaverStock } from "../kit/stockLock.ts";
 import { transitionStatus } from "../kit/transition.ts";
 
 export interface DouyinOrderCsvRow {
@@ -423,43 +420,4 @@ export async function commitDouyinImport(
     shippedUpdated,
     signedUpdated,
   };
-}
-
-export async function registerCancelledPackageToWeaverStock(
-  db: DbAdapter,
-  pkg: OrderPackageDoc,
-  nowUtcMs: number,
-): Promise<void> {
-  if (!pkg.assignedWeaverId) return;
-  for (const item of pkg.itemsSnapshot) {
-    const id = weaverStockId(pkg.assignedWeaverId, item.skuCode);
-    const existing = await db.get<WeaverStockDoc>(COLLECTIONS.WEAVER_STOCK, id);
-    if (!existing) {
-      await db.insert<WeaverStockDoc>(COLLECTIONS.WEAVER_STOCK, {
-        _id: id,
-        weaverId: pkg.assignedWeaverId,
-        skuCode: item.skuCode,
-        availableQty: item.qty,
-        reservedQty: 0,
-        reservations: [],
-        items: [{ sourceType: "cancelled_order", sourcePkgId: pkg._id, createdAt: nowUtcMs }],
-        oldestCreatedAt: nowUtcMs,
-        version: 1,
-        updatedAt: nowUtcMs,
-      });
-    } else {
-      await db.atomicUpdate<WeaverStockDoc>(
-        COLLECTIONS.WEAVER_STOCK,
-        id,
-        () => true,
-        (cur) => ({
-          ...cur,
-          availableQty: cur.availableQty + item.qty,
-          items: [...cur.items, { sourceType: "cancelled_order", sourcePkgId: pkg._id, createdAt: nowUtcMs }],
-          version: cur.version + 1,
-          updatedAt: nowUtcMs,
-        }),
-      );
-    }
-  }
 }

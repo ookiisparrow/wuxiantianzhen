@@ -1,11 +1,17 @@
-import { computeWeaverStyleUnits } from "../../../shared/src/capacity.ts";
-import { COLLECTIONS } from "../../../shared/src/collections.ts";
-import { DAY_MS } from "../../../shared/src/cst.ts";
-import { AppError, ERROR_CODES } from "../../../shared/src/errors.ts";
-import { ZERO_FEN, addFen, asNonNegativeFen, asPositiveFen, type Fen } from "../../../shared/src/money.ts";
-import { ORDER_PACKAGE_STATUS_SPEC, REFUND_STATUS_SPEC } from "../../../shared/src/status.ts";
 import {
+  COLLECTIONS,
+  DAY_MS,
+  AppError,
+  ERROR_CODES,
+  ZERO_FEN,
+  addFen,
+  asNonNegativeFen,
+  asPositiveFen,
+  ORDER_PACKAGE_STATUS_SPEC,
+  REFUND_STATUS_SPEC,
   LEDGER_ACCOUNT_CODES,
+  computeWeaverStyleUnits,
+  type Fen,
   type AddressDoc,
   type OrderDoc,
   type OrderPackageDoc,
@@ -16,7 +22,7 @@ import {
   type UserDoc,
   type WeaverStockDoc,
   type YarnCatalogDoc,
-} from "../../../shared/src/schemas.ts";
+} from "@wxtz/shared";
 import type { DbAdapter } from "../kit/db.ts";
 import {
   ledgerKeyLossComp,
@@ -28,9 +34,8 @@ import {
   refundId,
 } from "../kit/ids.ts";
 import { accrueSettledPackage, postLedgerEntry } from "../kit/ledger.ts";
-import { reserveReadyStock } from "../kit/stockLock.ts";
+import { registerCancelledPackageToWeaverStock, reserveReadyStock } from "../kit/stockLock.ts";
 import { transitionStatus } from "../kit/transition.ts";
-import { registerCancelledPackageToWeaverStock } from "./douyinCsv.ts";
 
 /**
  * Checks real-time sellability of a product on `mp-buyer` (docs/07 §4.3):

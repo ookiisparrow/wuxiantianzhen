@@ -1,17 +1,24 @@
-import { COLLECTIONS } from "../../../shared/src/collections.ts";
-import { formatCstCompactYmd, formatCstWeekKey } from "../../../shared/src/cst.ts";
-import { AppError, ERROR_CODES } from "../../../shared/src/errors.ts";
-import { ZERO_FEN, addFen, asNonNegativeFen, asPositiveFen, type Fen } from "../../../shared/src/money.ts";
-import { ORDER_PACKAGE_STATUS_SPEC, YARN_CLAIM_STATUS_SPEC } from "../../../shared/src/status.ts";
 import {
+  COLLECTIONS,
+  formatCstCompactYmd,
+  formatCstWeekKey,
+  AppError,
+  ERROR_CODES,
+  ZERO_FEN,
+  addFen,
+  asNonNegativeFen,
+  asPositiveFen,
+  ORDER_PACKAGE_STATUS_SPEC,
+  YARN_CLAIM_STATUS_SPEC,
   LEDGER_ACCOUNT_CODES,
+  type Fen,
   type AddressDoc,
   type OrderPackageDoc,
   type UserDoc,
   type WeaverAccountDoc,
   type YarnCatalogDoc,
   type YarnClaimDoc,
-} from "../../../shared/src/schemas.ts";
+} from "@wxtz/shared";
 import type { DbAdapter } from "../kit/db.ts";
 import { ledgerKeyPayout, yarnClaimId } from "../kit/ids.ts";
 import { debitYarnPoolAtomic, postLedgerEntry } from "../kit/ledger.ts";

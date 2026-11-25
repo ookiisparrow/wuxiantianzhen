@@ -1,6 +1,4 @@
-import { COLLECTIONS } from "../../../shared/src/collections.ts";
-import { AppError, ERROR_CODES } from "../../../shared/src/errors.ts";
-import type { UserDoc, UserRole } from "../../../shared/src/schemas.ts";
+import { COLLECTIONS, AppError, ERROR_CODES, type UserDoc, type UserRole } from "@wxtz/shared";
 import type { DbAdapter } from "./db.ts";
 import { newUserId } from "./ids.ts";
 

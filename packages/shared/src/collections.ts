@@ -9,10 +9,11 @@ export const COLLECTIONS = {
   RECRUIT_FUNNEL: "recruitFunnel",
   VOLUNTEERS: "volunteers",
 
-  // 3.2 款式、商品、图解与余货 (4)
+  // 3.2 款式、商品、图解、可拼装部件与余货 (5)
   STYLES: "styles",
   PRODUCTS: "products",
   PATTERNS: "patterns",
+  PATTERN_MODULES: "patternModules",
   WEAVER_STOCK: "weaverStock",
 
   // 3.3 订单、派单、质检与物流 (7)
