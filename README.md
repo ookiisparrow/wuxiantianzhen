@@ -29,7 +29,7 @@
 | 路径 | 包名或标识 | 职责 |
 |---|---|---|
 | `packages/shared` | `@wxtz/shared` | 30 个集合 Schema、整数金额 `Fen`、状态机定义、北京时间日历、双桶产能与模块化图解拼装 |
-| `packages/cloud` | `@wxtz/cloud` | 复式账本、现货 15 分钟原子锁、双粒度毛线库存、六大领域服务、六边形端口与 `wxtz-api` 统一路由 |
+| `packages/cloud` | `@wxtz/cloud` | 复式账本、现货 15 分钟原子锁、双粒度毛线库存、八大领域服务、六边形端口与 `wxtz-api` 统一路由 |
 | `packages/mp-weaver` | `@wxtz/mp-weaver` | 织女与创作者工作台小程序：四步准入漏斗、接单队列、防截屏歌词式图解、三机位交片封签、周度领线 |
 | `packages/mp-buyer` | `@wxtz/mp-buyer` | 买家商城与粉丝陪审团小程序：产能实时控量市集、下单锁库、8 秒盲审投票、200 元保证金收银台 |
 | `packages/admin` | `@wxtz/admin` | 运营 Web 总控台：开播安全库存试算、抖店双 CSV 强校验导单、待打单与卡单、10 秒仲裁、线材与网银结款 CSV 导出 |
@@ -47,7 +47,7 @@ Git 历史中的早期原型已隔离在本地分支 `legacy-prototype-2026-10`�
 
 ## 验证与技能用法
 
-运行环境隔离检查与全量 27 项单元及对抗回归测试：
+运行环境隔离检查与全量 44 项单元及对抗回归测试：
 
 ```bash
 	npm run verify
