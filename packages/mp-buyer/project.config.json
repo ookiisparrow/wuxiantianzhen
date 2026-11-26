@@ -2,14 +2,37 @@
   "description": "无限天真·买家商城与陪审团小程序配置（部署前替换为真实 AppID）",
   "miniprogramRoot": "./",
   "compileType": "miniprogram",
-  "appid": "wxtz-mp-buyer-placeholder",
+  "appid": "wx41dd81830eafbaaa",
   "projectname": "wxtz-mp-buyer",
   "setting": {
-    "urlCheck": true,
+    "urlCheck": false,
     "es6": true,
     "enhance": true,
     "postcss": true,
     "minified": true,
-    "useCompilerPlugins": ["typescript"]
-  }
+    "useCompilerPlugins": [
+      "typescript"
+    ],
+    "compileWorklet": false,
+    "uglifyFileName": false,
+    "uploadWithSourceMap": true,
+    "packNpmManually": false,
+    "packNpmRelationList": [],
+    "minifyWXSS": true,
+    "minifyWXML": true,
+    "localPlugins": false,
+    "disableUseStrict": false,
+    "condition": false,
+    "babelSetting": {
+      "ignore": [],
+      "disablePlugins": [],
+      "outputPath": ""
+    }
+  },
+  "simulatorPluginLibVersion": {},
+  "packOptions": {
+    "ignore": [],
+    "include": []
+  },
+  "editorSetting": {}
 }

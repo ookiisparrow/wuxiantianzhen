@@ -285,3 +285,20 @@ document.getElementById("btnConfirmBankPaid").addEventListener("click", async ()
     preview.textContent = `⛔ 核销失败：${err.message}`;
   }
 });
+
+// Auto-bind to local persistent dev server when opened from `npm run dev:local`
+(async function bootstrapLocalDev() {
+  if (location.protocol !== "http:" || endpointInput.value.trim()) return;
+  try {
+    const res = await fetch("/__dev/bootstrap");
+    if (!res.ok) return;
+    const info = await res.json();
+    if (info?.mode === "local-dev" && info.apiUrl && info.adminToken) {
+      endpointInput.value = info.apiUrl;
+      jwtInput.value = info.adminToken;
+      updateModeBadge();
+    }
+  } catch {
+    // Ignore when running standalone static HTML or verify-server.ts
+  }
+})();

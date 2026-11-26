@@ -50,6 +50,8 @@ next-env.d.ts
 # local UI review & verification captures
 /docs/ui-review/
 /.verify-artifacts/
+/.local-dev/
+project.private.config.json
 
 # design workbench runtime artifacts
 /design/handoff.json

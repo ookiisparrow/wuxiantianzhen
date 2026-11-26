@@ -8,22 +8,54 @@ export interface CloudApiResult<T = any> {
   message?: string;
 }
 
+function postLocalDev<T>(
+  apiUrl: string,
+  body: Record<string, unknown>,
+): Promise<CloudApiResult<T>> {
+  return new Promise((resolve, reject) => {
+    wx.request({
+      url: apiUrl,
+      method: "POST",
+      header: { "Content-Type": "application/json" },
+      data: body,
+      success(res: any) {
+        resolve((res?.data ?? {}) as CloudApiResult<T>);
+      },
+      fail(err: any) {
+        reject(new Error(err?.errMsg || "无法连接本机联调服务，请先运行 npm run dev:local"));
+      },
+    });
+  });
+}
+
 /**
  * Calls unified CloudBase router `wxtz-api` with `app: 'mp-weaver'`.
+ * Automatically routes via `wx.request` when `app.globalData.localDev.enabled` is true.
  */
 export async function callWeaverCloud<T = any>(
   action: string,
   payload: Record<string, unknown> = {},
 ): Promise<T> {
-  const res = await wx.cloud.callFunction({
-    name: "wxtz-api",
-    data: {
+  const localDev = typeof getApp === "function" ? getApp()?.globalData?.localDev : undefined;
+  let body: CloudApiResult<T>;
+  if (localDev?.enabled && localDev.apiUrl) {
+    body = await postLocalDev<T>(localDev.apiUrl, {
       action,
       app: "mp-weaver",
+      openid: localDev.openid || "oid_w_live_01",
       payload,
-    },
-  });
-  const body = (res?.result ?? {}) as CloudApiResult<T>;
+    });
+  } else {
+    const res = await wx.cloud.callFunction({
+      name: "wxtz-api",
+      data: {
+        action,
+        app: "mp-weaver",
+        payload,
+      },
+    });
+    body = (res?.result ?? {}) as CloudApiResult<T>;
+  }
   if (!body.ok) {
     const msg = body.message || "请求失败，请稍后重试";
     wx.showToast({ title: msg, icon: "none", duration: 2600 });

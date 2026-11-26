@@ -350,3 +350,52 @@ test("R18: Mini-Program pages execute end-to-end against router (catalog sellabi
   await yp.loadYarnState();
   assert.equal(yp.data.inventoryList[0]?.claimQty, 3);
 });
+
+test("Local-dev HTTP transport in mp-weaver and mp-buyer routes via wx.request and simulates wxpay cleanly", async () => {
+  const { callWeaverCloud } = await import("../../../mp-weaver/utils/cloud.ts");
+  const { callBuyerCloud, requestBuyerPayment } = await import("../../../mp-buyer/utils/cloud.ts");
+
+  const requests: Array<{ url: string; data: any }> = [];
+  (globalThis as any).getApp = () => ({
+    globalData: {
+      localDev: {
+        enabled: true,
+        apiUrl: "http://127.0.0.1:3880/wxtz-api",
+        devOrigin: "http://127.0.0.1:3880",
+        openid: "oid_local_test",
+      },
+    },
+  });
+  (globalThis as any).wx = {
+    showToast() {},
+    showModal(opts: any) {
+      opts?.success?.({ confirm: true });
+    },
+    request(opts: any) {
+      requests.push({ url: opts.url, data: opts.data });
+      opts?.success?.({ data: { ok: true, data: { echoedAction: opts.data.action ?? "wxpay" } } });
+    },
+  };
+
+  const wRes = await callWeaverCloud("weaver.dashboard", {});
+  assert.equal(wRes.echoedAction, "weaver.dashboard");
+  assert.equal(requests[0].url, "http://127.0.0.1:3880/wxtz-api");
+  assert.equal(requests[0].data.app, "mp-weaver");
+  assert.equal(requests[0].data.openid, "oid_local_test");
+
+  const bRes = await callBuyerCloud("buyer.catalog", {});
+  assert.equal(bRes.echoedAction, "buyer.catalog");
+  assert.equal(requests[1].data.app, "mp-buyer");
+
+  let paidCalled = false;
+  requestBuyerPayment({
+    orderId: "ord_local_test_1",
+    onPaid: () => {
+      paidCalled = true;
+    },
+  });
+  await new Promise((r) => setTimeout(r, 10));
+  assert.equal(paidCalled, true);
+  assert.equal(requests[2].url, "http://127.0.0.1:3880/__dev/simulate-wxpay");
+  assert.equal(requests[2].data.orderId, "ord_local_test_1");
+});

@@ -1,4 +1,4 @@
-import { callBuyerCloud } from "../../utils/cloud";
+import { callBuyerCloud, requestBuyerPayment } from "../../utils/cloud";
 
 declare const wx: any;
 declare function Page(opts: Record<string, any>): void;
@@ -18,15 +18,14 @@ Page({
     const res = await callBuyerCloud("buyer.payWeaverDeposit", {});
     this.setData({ outTradeNo: res.outTradeNo });
 
-    if (wx.requestPayment && res.prepay?.payParams) {
-      wx.requestPayment({
-        ...res.prepay.payParams,
-        success: () => {
-          this.setData({ paid: true });
-          wx.showToast({ title: "保证金缴付成功！", icon: "success" });
-        },
-      });
-    }
+    requestBuyerPayment({
+      orderId: res.outTradeNo,
+      payParams: res.prepay?.payParams,
+      onPaid: () => {
+        this.setData({ paid: true });
+        wx.showToast({ title: "保证金缴付成功！", icon: "success" });
+      },
+    });
   },
 
   onBackToWeaverMp() {

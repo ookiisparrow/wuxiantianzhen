@@ -1,4 +1,4 @@
-import { callBuyerCloud, ensureBuyerLoggedIn } from "../../utils/cloud";
+import { callBuyerCloud, ensureBuyerLoggedIn, requestBuyerPayment } from "../../utils/cloud";
 
 declare const wx: any;
 declare function getApp(): any;
@@ -73,15 +73,14 @@ Page({
       orderStatus: "pending_pay",
     });
 
-    if (wx.requestPayment && res.prepay?.payParams) {
-      wx.requestPayment({
-        ...res.prepay.payParams,
-        success: () => {
-          this.setData({ orderStatus: "paid_waiting_dispatch" });
-          wx.showToast({ title: "支付成功！", icon: "success" });
-        },
-      });
-    }
+    requestBuyerPayment({
+      orderId: res.order?._id || "",
+      payParams: res.prepay?.payParams,
+      onPaid: () => {
+        this.setData({ orderStatus: "paid_waiting_dispatch" });
+        wx.showToast({ title: "支付成功！", icon: "success" });
+      },
+    });
   },
 
   async onInstantCancelPreDispatch() {
