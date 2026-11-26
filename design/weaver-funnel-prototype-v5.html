@@ -1,0 +1,2134 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
+<meta name="theme-color" content="#F5F6F8" />
+<title>无限天真 · 织女筛选流程原型 v5（首页一次性微信采集 · 点选直进 · 全程可返回）</title>
+<style>
+  /* ===== 1. Adopted Palette: 质检靛青灰 (slate_indigo) + WeUI Typography + Official WeChat Native Tokens ===== */
+  :root {
+    --stage-bg: #E2E5EC;
+    --bg: #F5F6F8;
+    --card: #FFFFFF;
+    --soft: #EEF0F4;
+    --line: rgba(21, 25, 34, 0.08);
+    --line-strong: #C7CFDF;
+    --input-border: #8590A6;
+    --stitch: #8E9BB5;
+
+    --brand: #293B63;
+    --brand-dark: #1D2B4A;
+    --brand-soft: #F0F3F9;
+    --brand-line: rgba(41, 59, 99, 0.24);
+    --btn-shadow: rgba(29, 43, 74, 0.12);
+
+    /* Official WeChat Native System Component Tokens */
+    --wx-green: #07C160;
+    --wx-green-soft: #EAF9F0;
+    --wx-grey-btn: #F2F2F2;
+    --wx-line: rgba(0, 0, 0, 0.08);
+    --wx-gap: #F7F7F7;
+
+    --ok: #177245;
+    --ok-soft: #ECF6F0;
+    --ok-line: rgba(23, 114, 69, 0.24);
+
+    --warn: #945610;
+    --warn-soft: #FDF5E8;
+    --warn-line: rgba(148, 86, 16, 0.26);
+
+    --bad: #C43626;
+    --bad-soft: #FDF0EE;
+    --bad-line: rgba(196, 54, 38, 0.26);
+
+    --ink: rgba(17, 24, 39, 0.92);
+    --ink-mid: rgba(17, 24, 39, 0.64);
+    --ink-sub: rgba(17, 24, 39, 0.46);
+
+    --font-hero: 34px;
+    --font-h1: 22px;     /* WeUI 页面大标题 22px / 44rpx */
+    --font-body: 17px;   /* WeUI 主正文 / 导航栏 / 主按钮 / 选项主文案 17px / 34rpx */
+    --font-sub: 15px;    /* WeUI 次要正文 15px / 30rpx */
+    --font-desc: 14px;   /* WeUI 辅助说明 14px / 28rpx */
+    --font-cap: 12px;    /* WeUI 次级标签 / 状态栏 12px / 24rpx */
+
+    --radius-card: 12px;
+    --radius-outer: 18px;
+    --radius-inner: 8px;
+    --radius-btn: 10px;
+    --card-shadow: 0 1px 2px rgba(17, 24, 39, 0.03), 0 4px 12px rgba(17, 24, 39, 0.025);
+
+    --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+    --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+    --dur-press: 120ms;
+    --dur-fade: 125ms;
+    --dur-enter: 175ms;
+    --dur-sheet-in: 240ms;
+    --dur-sheet-out: 180ms;
+  }
+
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+  html, body {
+    margin: 0; padding: 0; min-height: 100vh;
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    color: var(--ink);
+    background: var(--stage-bg);
+    -webkit-font-smoothing: antialiased;
+    -webkit-text-size-adjust: 100%;
+    overscroll-behavior: none;
+  }
+
+  button, [role="radio"], [role="checkbox"], .wx-top, .stage-bar {
+    -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+  }
+  button, input, a, [role="radio"], [role="checkbox"] { touch-action: manipulation; }
+  button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+
+  .stage {
+    height: 100vh; overflow: hidden;
+    display: flex; align-items: center; justify-content: center;
+    gap: 28px; padding: 16px 24px;
+  }
+
+  /* ===== 375pt WeChat Viewport ===== */
+  .phone {
+    width: 375px; height: min(760px, calc(100vh - 32px)); min-height: 620px;
+    background: var(--bg); border-radius: 42px;
+    box-shadow: 0 0 0 8px #1E222B, 0 0 0 9.5px rgba(255, 255, 255, 0.18), 0 24px 56px rgba(17, 24, 39, 0.20);
+    overflow: hidden; position: relative; display: flex; flex-direction: column; flex-shrink: 0;
+  }
+
+  .wx-top { flex-shrink: 0; background: var(--bg); position: relative; z-index: 20; }
+  .wx-status {
+    height: 42px; padding: 12px 24px 0;
+    display: flex; align-items: center; justify-content: space-between;
+    font-size: var(--font-cap); font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums;
+  }
+  .wx-notch {
+    width: 104px; height: 24px; background: #14171F; border-radius: 999px;
+    position: absolute; top: 9px; left: 50%; transform: translateX(-50%); pointer-events: none;
+  }
+  .wx-nav { height: 44px; padding: 0 12px 0 16px; display: flex; align-items: center; justify-content: space-between; }
+  .wx-back {
+    appearance: none; border: none; background: transparent; color: var(--ink);
+    font-size: var(--font-sub); font-weight: 500; display: inline-flex; align-items: center; gap: 2px;
+    padding: 8px 6px 8px 0; min-height: 44px; min-width: 84px; cursor: pointer; font-family: inherit;
+    transition: opacity var(--dur-fade) var(--ease-out), transform var(--dur-press) var(--ease-out);
+  }
+  .wx-back:active { opacity: 0.55; transform: translateX(-2px); }
+  .wx-back.hidden { visibility: hidden; pointer-events: none; }
+  .wx-title { font-size: var(--font-body); font-weight: 500; color: var(--ink); white-space: nowrap; }
+  .wx-capsule {
+    width: 84px; height: 30px; border-radius: 999px; border: 0.5px solid rgba(17, 24, 39, 0.12);
+    background: rgba(255, 255, 255, 0.68); display: flex; align-items: center; justify-content: space-evenly; flex-shrink: 0;
+  }
+  .wx-cap-div { width: 0.5px; height: 16px; background: rgba(17, 24, 39, 0.14); }
+
+  .stage-bar { flex-shrink: 0; padding: 4px 20px 8px; display: flex; align-items: center; gap: 5px; }
+  .stage-seg { flex: 1; height: 3px; border-radius: 999px; background: rgba(17, 24, 39, 0.08); overflow: hidden; }
+  .stage-seg-fill { height: 100%; border-radius: 999px; background: var(--brand); transition: width 220ms var(--ease-out), background-color 180ms var(--ease-out); }
+  .stage-seg.done .stage-seg-fill { background: var(--ok); width: 100%; }
+
+  @keyframes enterFwd  { from { opacity: 0; transform: translateX(8px); }  to { opacity: 1; transform: translateX(0); } }
+  @keyframes enterBack { from { opacity: 0; transform: translateX(-8px); } to { opacity: 1; transform: translateX(0); } }
+  @keyframes fadeOnly  { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes badgePop  { from { opacity: 0; transform: scale(0.94); } to { opacity: 1; transform: scale(1); } }
+  @keyframes scanLine  { 0% { transform: translateY(0); } 50% { transform: translateY(156px); } 100% { transform: translateY(0); } }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .screen.dir-fwd  > * { animation: enterFwd var(--dur-enter) var(--ease-out) both; }
+    .screen.dir-back > * { animation: enterBack var(--dur-enter) var(--ease-out) both; }
+    .badge-pop { animation: badgePop 180ms var(--ease-out) both; }
+    .wx-scan-laser { animation: scanLine 2.1s ease-out infinite; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .screen.dir-fwd > *, .screen.dir-back > * { animation: fadeOnly 120ms ease both; }
+  }
+
+  /* ===== Main Screen: ZERO SCROLL, NO GLOBAL NEXT BAR ===== */
+  .screen {
+    flex: 1; min-height: 0; min-width: 0; overflow: hidden;
+    padding: 12px 20px 14px;
+    display: flex; flex-direction: column; justify-content: flex-start; position: relative;
+  }
+
+  .head-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: 6px; position: relative; }
+  .h1 { margin: 0; min-width: 0; flex: 1; font-size: var(--font-h1); font-weight: 600; line-height: 1.34; letter-spacing: -0.2px; color: var(--ink); }
+  .lead { margin: 0 0 14px; font-size: var(--font-desc); font-weight: 400; line-height: 1.48; color: var(--ink-mid); }
+
+  /* Welcome */
+  .hero-art {
+    width: 100%; height: 176px; border-radius: var(--radius-card);
+    background: var(--card); border: 1px solid var(--line); box-shadow: var(--card-shadow);
+    display: flex; align-items: center; justify-content: center; margin-bottom: 16px; overflow: hidden;
+  }
+  .pillar-group {
+    background: var(--card); border: 1px solid var(--line); border-radius: var(--radius-card);
+    box-shadow: var(--card-shadow); display: flex; margin-bottom: 14px; overflow: hidden;
+  }
+  .pillar-chip { flex: 1; min-width: 0; padding: 13px 6px; display: flex; flex-direction: column; align-items: center; gap: 6px; position: relative; }
+  .pillar-chip + .pillar-chip::before { content: ""; position: absolute; left: 0; top: 16px; bottom: 16px; width: 1px; background: var(--line); }
+  .pillar-ico { width: 34px; height: 34px; border-radius: 9px; background: var(--brand-soft); color: var(--brand); display: flex; align-items: center; justify-content: center; }
+  .pillar-txt { font-size: var(--font-desc); font-weight: 500; color: var(--ink); text-align: center; }
+
+  /* Inline Action Buttons (Used ONLY where a page has no direct tap-to-advance options) */
+  .screen-cta {
+    appearance: none; border: none; width: 100%; height: 48px; border-radius: var(--radius-btn);
+    background: var(--brand); color: #FFFFFF; font-size: var(--font-body); font-weight: 600;
+    cursor: pointer; font-family: inherit; box-shadow: 0 4px 12px var(--btn-shadow);
+    display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: auto;
+    transition: opacity var(--dur-fade) var(--ease-out), transform var(--dur-press) var(--ease-out);
+  }
+  .screen-cta:active { transform: scale(0.975); opacity: 0.92; }
+  .screen-cta.wx-cta { background: var(--wx-green); box-shadow: 0 4px 14px rgba(7, 193, 96, 0.22); }
+  .screen-cta.muted-cta { background: #E4E8F0; color: #424D63; box-shadow: none; }
+  .tap-hint {
+    margin-top: auto; padding-top: 8px; text-align: center;
+    font-size: var(--font-cap); color: var(--ink-sub);
+  }
+
+  /* Aesthetic 10-Question A/B Cards */
+  .step-meta {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    margin-bottom: 8px; font-size: var(--font-cap); color: var(--ink-sub); font-weight: 500; font-variant-numeric: tabular-nums;
+  }
+  .step-dots { display: flex; gap: 4px; flex: 1; max-width: 196px; }
+  .s-dot { flex: 1; height: 4px; border-radius: 999px; background: rgba(17, 24, 39, 0.10); transition: background-color 150ms var(--ease-out); }
+  .s-dot.cur { background: var(--brand); }
+  .s-dot.done { background: var(--ok); }
+
+  .aes-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; align-content: start; }
+  .aes-card {
+    appearance: none; padding: 0; border-radius: var(--radius-card);
+    border: 1px solid var(--line); background: var(--card); box-shadow: var(--card-shadow);
+    overflow: hidden; cursor: pointer; font-family: inherit; text-align: left; display: flex; flex-direction: column;
+    transition: border-color var(--dur-fade) var(--ease-out), background-color var(--dur-fade) var(--ease-out), transform var(--dur-press) var(--ease-out);
+  }
+  .aes-card:active { transform: scale(0.975); }
+  .aes-card.selected { border: 1.5px solid var(--brand); background: var(--brand-soft); }
+  .aes-art { width: 100%; height: 204px; background: #F9FAFB; display: flex; align-items: center; justify-content: center; border-bottom: 1px solid var(--line); }
+  .aes-foot {
+    padding: 13px 12px; min-height: 50px; display: flex; align-items: center; justify-content: space-between;
+    font-size: var(--font-body); font-weight: 500; color: var(--ink);
+  }
+  .aes-card.selected .aes-foot { color: var(--brand-dark); font-weight: 600; }
+
+  /* Cells & Direct Tap Option Cards */
+  .cell-group { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius-card); box-shadow: var(--card-shadow); overflow: hidden; }
+  .cell-row { display: flex; align-items: flex-start; gap: 12px; padding: 13px 16px; position: relative; }
+  .cell-row + .cell-row::before { content: ""; position: absolute; left: 60px; right: 16px; top: 0; height: 1px; background: var(--line); }
+  .cell-ico { width: 32px; height: 32px; border-radius: 8px; background: var(--brand-soft); color: var(--brand); display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 1px; }
+  .cell-body { min-width: 0; flex: 1; }
+  .cell-main { font-size: var(--font-body); font-weight: 500; color: var(--ink); line-height: 1.35; }
+  .cell-desc { font-size: var(--font-desc); color: var(--ink-mid); margin-top: 2px; line-height: 1.4; }
+
+  .stack { display: flex; flex-direction: column; gap: 10px; }
+  .grid-2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
+
+  .choice-card {
+    appearance: none; width: 100%; min-height: 70px; padding: 14px 16px;
+    border-radius: var(--radius-card); border: 1px solid var(--line); background: var(--card); box-shadow: var(--card-shadow);
+    color: var(--ink); cursor: pointer; font-family: inherit;
+    display: flex; align-items: center; justify-content: space-between; gap: 12px; text-align: left;
+    transition: border-color var(--dur-fade) var(--ease-out), background-color var(--dur-fade) var(--ease-out), transform var(--dur-press) var(--ease-out);
+  }
+  .choice-card:active { transform: scale(0.98); }
+  .choice-card.selected { border: 1.5px solid var(--brand); background: var(--brand-soft); }
+  .choice-left { display: flex; align-items: center; gap: 12px; min-width: 0; }
+  .choice-art { width: 42px; height: 42px; border-radius: 10px; background: var(--soft); color: var(--brand); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .choice-card.selected .choice-art { background: var(--card); }
+
+  .weui-radio { width: 20px; height: 20px; border-radius: 50%; border: 1.5px solid var(--line-strong); background: var(--card); display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .weui-radio svg { opacity: 0; }
+  .selected .weui-radio { border-color: var(--brand); background: var(--brand); color: #FFFFFF; }
+  .selected .weui-radio svg { opacity: 1; }
+
+  /* Wage Screen */
+  .sample-card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius-card); box-shadow: var(--card-shadow); overflow: hidden; margin-bottom: 14px; }
+  .sample-art { height: 136px; background: #F9FAFB; display: flex; align-items: center; justify-content: center; position: relative; }
+  .sample-badge { position: absolute; bottom: 8px; right: 10px; padding: 2px 8px; border-radius: 999px; background: rgba(255, 255, 255, 0.92); border: 1px solid var(--line); font-size: var(--font-cap); color: var(--ink-mid); font-weight: 500; }
+  .sample-bar { padding: 10px 14px; border-top: 1px solid var(--line); }
+  .sample-name { font-size: var(--font-sub); font-weight: 600; color: var(--ink); }
+
+  .price-opt {
+    appearance: none; min-height: 58px; padding: 10px 14px;
+    border-radius: var(--radius-card); border: 1px solid var(--line); background: var(--card); box-shadow: var(--card-shadow);
+    color: var(--ink); font-size: var(--font-body); font-weight: 500; font-family: inherit; font-variant-numeric: tabular-nums;
+    display: flex; align-items: center; justify-content: space-between; gap: 8px; cursor: pointer;
+    transition: border-color var(--dur-fade) var(--ease-out), background-color var(--dur-fade) var(--ease-out), transform var(--dur-press) var(--ease-out);
+  }
+  .price-opt:active { transform: scale(0.975); }
+  .price-opt.selected { border: 1.5px solid var(--brand); background: var(--brand-soft); color: var(--brand-dark); font-weight: 600; }
+
+  /* Action Card & Inputs */
+  .action-card {
+    appearance: none; width: 100%; padding: 18px 16px; border-radius: var(--radius-card);
+    border: 1px solid var(--line); background: var(--card); box-shadow: var(--card-shadow); color: var(--ink); font-family: inherit;
+    display: flex; flex-direction: column; align-items: center; gap: 6px; cursor: pointer; margin-bottom: 14px;
+  }
+  .action-card:active { transform: scale(0.985); background: var(--soft); }
+  .action-card.done { border-color: var(--ok-line); background: var(--ok-soft); }
+  .action-ico { width: 38px; height: 38px; border-radius: 10px; background: var(--wx-green-soft); color: var(--wx-green); display: flex; align-items: center; justify-content: center; }
+  .action-sub { max-width: 100%; font-size: var(--font-desc); color: var(--ink-sub); font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .field-lbl { display: block; font-size: var(--font-desc); font-weight: 500; color: var(--ink-mid); margin-bottom: 6px; }
+  .big-input {
+    width: 100%; height: 48px; padding: 0 14px; border-radius: var(--radius-btn);
+    border: 1px solid var(--input-border); background: var(--card);
+    font-size: var(--font-body); color: var(--ink); font-family: inherit; font-variant-numeric: tabular-nums; outline: none;
+  }
+  .big-input::placeholder { color: var(--ink-sub); font-size: var(--font-sub); }
+  .big-input:focus { border-color: var(--brand); border-width: 1.5px; }
+
+  /* Photo Guide + Concentric Viewfinder */
+  .guide-pair { display: flex; gap: 10px; margin-bottom: 14px; }
+  .guide-box { flex: 1; min-width: 0; border-radius: var(--radius-card); overflow: hidden; border: 1px solid var(--line); background: var(--card); box-shadow: var(--card-shadow); position: relative; }
+  .guide-badge { position: absolute; top: 8px; left: 8px; height: 20px; padding: 0 7px 0 6px; border-radius: 999px; font-size: var(--font-cap); font-weight: 500; white-space: nowrap; display: inline-flex; align-items: center; gap: 3px; color: #FFFFFF; }
+  .guide-box.good .guide-badge { background: var(--ok); }
+  .guide-box.bad .guide-badge { background: var(--bad); }
+  .guide-svg { display: block; width: 100%; height: 112px; }
+  .guide-lbl { padding: 7px 6px; font-size: var(--font-desc); font-weight: 500; text-align: center; border-top: 1px solid var(--line); }
+  .guide-box.good .guide-lbl { color: var(--ok); background: var(--ok-soft); }
+  .guide-box.bad .guide-lbl { color: var(--bad); background: var(--bad-soft); }
+
+  .upload-area {
+    appearance: none; width: 100%; flex: 1; min-height: 152px; max-height: 210px;
+    border-radius: var(--radius-outer); border: 1px solid var(--line); background: var(--card); box-shadow: var(--card-shadow);
+    padding: 10px; cursor: pointer; font-family: inherit; display: flex; align-items: center; justify-content: center;
+  }
+  .upload-area:active { transform: scale(0.985); }
+  .upload-inner {
+    width: 100%; height: 100%; border-radius: var(--radius-inner); border: 1.5px dashed var(--stitch); background: var(--bg);
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: 12px;
+  }
+  .upload-area.done .upload-inner { border-style: solid; border-color: var(--ok-line); background: var(--ok-soft); }
+  .upload-title { font-size: var(--font-body); font-weight: 500; color: var(--brand); }
+  .upload-sub { font-size: var(--font-desc); color: var(--ink-sub); text-align: center; }
+  .upload-area.done .upload-title { color: var(--ok); }
+  .upload-area.done .upload-sub { color: var(--ok); opacity: 0.85; }
+
+  /* Trial Guide */
+  .trial-visual { display: flex; align-items: center; gap: 12px; background: var(--card); border: 1px solid var(--line); border-radius: var(--radius-card); box-shadow: var(--card-shadow); padding: 10px 14px; margin-bottom: 12px; }
+  .stitch-list { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius-card); box-shadow: var(--card-shadow); overflow: hidden; margin-bottom: 12px; }
+  .stitch-row {
+    appearance: none; width: 100%; border: none; background: transparent; padding: 11px 14px; min-height: 46px;
+    font-size: var(--font-sub); font-family: inherit; color: var(--ink); text-align: left;
+    display: flex; align-items: center; justify-content: space-between; gap: 8px; cursor: pointer; position: relative;
+  }
+  .stitch-row + .stitch-row::before { content: ""; position: absolute; left: 14px; right: 14px; top: 0; height: 1px; background: var(--line); }
+  .stitch-row.active { background: var(--brand-soft); color: var(--brand-dark); font-weight: 600; }
+  .stitch-row.done { color: var(--ink-mid); }
+  .stitch-tag { display: inline-block; min-width: 54px; margin-right: 4px; font-size: var(--font-desc); color: var(--ink-sub); font-variant-numeric: tabular-nums; }
+  .stitch-row.active .stitch-tag { color: var(--brand); font-weight: 600; }
+
+  /* Address Card & Tips */
+  .addr-card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius-card); box-shadow: var(--card-shadow); padding: 14px 16px; font-size: var(--font-sub); line-height: 1.55; color: var(--ink); }
+  .addr-row { display: flex; align-items: flex-start; gap: 8px; }
+  .addr-row + .addr-row { margin-top: 4px; }
+  .addr-k { color: var(--ink-sub); flex-shrink: 0; width: 46px; font-size: var(--font-desc); padding-top: 1px; }
+  .addr-v { min-width: 0; flex: 1; }
+  .addr-copy-btn {
+    appearance: none; width: 100%; min-height: 44px; margin-top: 12px;
+    border: 1px solid var(--brand-line); border-radius: 9px; background: var(--brand-soft); color: var(--brand);
+    font-size: var(--font-sub); font-weight: 500; font-family: inherit; display: flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer;
+  }
+  .tip-banner { margin-top: 12px; padding: 10px 12px; border-radius: 10px; font-size: var(--font-desc); line-height: 1.44; display: flex; align-items: flex-start; gap: 8px; }
+  .tip-banner svg { flex-shrink: 0; margin-top: 2px; }
+  .tip-ok { background: var(--ok-soft); color: var(--ok); border: 1px solid var(--ok-line); }
+  .tip-soft { background: var(--brand-soft); color: var(--brand-dark); border: 1px solid var(--brand-line); }
+
+  /* Center Calm Waiting / Status Screens */
+  .center-block { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 10px; padding: 0 4px; }
+  .big-num { font-size: var(--font-hero); font-weight: 600; color: var(--ink); line-height: 1.15; letter-spacing: -0.5px; font-variant-numeric: tabular-nums; }
+  .calm-card {
+    width: 100%; background: var(--card); border: 1px solid var(--line); border-radius: var(--radius-card);
+    box-shadow: var(--card-shadow); padding: 14px 16px; text-align: left; display: flex; flex-direction: column; gap: 8px; margin-top: 4px;
+  }
+  .calm-line { display: flex; align-items: center; gap: 8px; font-size: var(--font-desc); color: var(--ink-mid); }
+  .calm-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--brand); flex-shrink: 0; }
+  .calm-dot.ok { background: var(--ok); }
+  .sub-pill { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: 999px; background: var(--ok-soft); border: 1px solid var(--ok-line); color: var(--ok); font-size: var(--font-cap); font-weight: 500; }
+
+  .id-verified-box { margin-top: 12px; background: var(--card); border: 1px solid var(--ok-line); border-radius: var(--radius-card); padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; }
+  .yarn-4x3 { width: 100%; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-top: 4px; margin-bottom: 12px; }
+  .yarn-dot-card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 10px 4px; display: flex; flex-direction: column; align-items: center; gap: 5px; font-size: var(--font-cap); font-weight: 500; color: var(--ink-mid); }
+  .yarn-ball { width: 20px; height: 20px; border-radius: 50%; border: 1px solid rgba(17, 24, 39, 0.12); flex-shrink: 0; }
+  .id-badge { font-size: var(--font-cap); font-weight: 600; color: var(--ok); background: var(--ok-soft); padding: 4px 8px; border-radius: 6px; white-space: nowrap; flex-shrink: 0; font-variant-numeric: tabular-nums; }
+
+  .home-bar { height: 18px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; background: var(--bg); }
+  .home-bar span { width: 120px; height: 4px; border-radius: 999px; background: rgba(17, 24, 39, 0.18); }
+
+  /* ===== Toast ===== */
+  .toast {
+    position: absolute; top: 92px; left: 50%; max-width: calc(100% - 32px);
+    transform: translate3d(-50%, -8px, 0) scale(0.96); transform-origin: top center;
+    background: rgba(21, 25, 34, 0.96); color: #FFFFFF; padding: 9px 15px; border-radius: 999px;
+    box-shadow: 0 10px 24px rgba(17, 24, 39, 0.22); font-size: var(--font-desc); font-weight: 500;
+    display: inline-flex; align-items: center; gap: 6px; z-index: 95; opacity: 0; pointer-events: none;
+    transition: opacity 150ms var(--ease-out), transform 180ms var(--ease-out); white-space: nowrap;
+  }
+  .toast.show { opacity: 1; transform: translate3d(-50%, 0, 0) scale(1); pointer-events: auto; }
+
+  /* =====================================================================
+     OFFICIAL WECHAT NATIVE SYSTEM COMPONENTS (wx.* Half-Screen / ActionSheet / Pay / Scan)
+     ===================================================================== */
+  .wx-sys-mask {
+    position: absolute; inset: 0; background: rgba(0, 0, 0, 0.50); z-index: 85;
+    display: flex; align-items: flex-end; opacity: 0; visibility: hidden; pointer-events: none;
+    transition: opacity var(--dur-sheet-out) var(--ease-out), visibility var(--dur-sheet-out) var(--ease-out);
+  }
+  .wx-sys-mask.open { opacity: 1; visibility: visible; pointer-events: auto; transition: opacity var(--dur-sheet-in) var(--ease-out), visibility var(--dur-sheet-in) var(--ease-out); }
+
+  .wx-native-sheet {
+    width: 100%; background: #FFFFFF; border-radius: 14px 14px 0 0;
+    padding: 20px 24px 32px; transform: translate3d(0, 100%, 0);
+    transition: transform var(--dur-sheet-out) var(--ease-out);
+  }
+  .wx-sys-mask.open .wx-native-sheet { transform: translate3d(0, 0, 0); transition: transform var(--dur-sheet-in) var(--ease-drawer); }
+
+  .wx-auth-app { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; font-size: var(--font-sub); font-weight: 500; color: rgba(0, 0, 0, 0.9); }
+  .wx-auth-app-l { display: flex; align-items: center; gap: 8px; }
+  .wx-step-chip { font-size: var(--font-cap); color: rgba(0, 0, 0, 0.45); font-weight: 400; font-variant-numeric: tabular-nums; }
+  .wx-app-dot { width: 24px; height: 24px; border-radius: 50%; background: var(--brand); color: #FFF; font-size: var(--font-cap); font-weight: 600; display: inline-flex; align-items: center; justify-content: center; }
+  .wx-auth-title { margin: 0 0 8px; font-size: var(--font-body); font-weight: 600; color: rgba(0, 0, 0, 0.9); line-height: 1.4; }
+  .wx-auth-sub { margin: 0 0 16px; font-size: var(--font-desc); color: rgba(0, 0, 0, 0.55); line-height: 1.45; }
+
+  .wx-native-row {
+    padding: 13px 0; border-top: 0.5px solid var(--wx-line); border-bottom: 0.5px solid var(--wx-line);
+    display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 22px;
+  }
+  .wx-native-row-left { display: flex; align-items: center; gap: 12px; min-width: 0; }
+  .wx-native-ava {
+    width: 40px; height: 40px; border-radius: 6px; background: var(--wx-green-soft); color: var(--wx-green);
+    display: flex; align-items: center; justify-content: center; font-size: var(--font-body); font-weight: 600; flex-shrink: 0;
+  }
+  .wx-native-chk { color: var(--wx-green); flex-shrink: 0; display: inline-flex; }
+
+  .wx-native-btn-pair { display: flex; gap: 14px; }
+  .wx-btn-deny, .wx-btn-allow {
+    appearance: none; flex: 1; height: 44px; border: none; border-radius: 8px;
+    font-size: var(--font-body); font-weight: 500; font-family: inherit; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: opacity var(--dur-fade) var(--ease-out), transform var(--dur-press) var(--ease-out);
+  }
+  .wx-btn-deny { background: var(--wx-grey-btn); color: var(--wx-green); }
+  .wx-btn-allow { background: var(--wx-green); color: #FFFFFF; }
+  .wx-btn-deny:active, .wx-btn-allow:active { opacity: 0.82; transform: scale(0.98); }
+
+  .wx-sub-row {
+    display: flex; align-items: center; gap: 10px; padding: 13px 0;
+    border-top: 0.5px solid var(--wx-line); border-bottom: 0.5px solid var(--wx-line);
+    font-size: var(--font-sub); color: rgba(0, 0, 0, 0.9); margin-bottom: 12px;
+  }
+  .wx-green-box { width: 20px; height: 20px; border-radius: 50%; background: var(--wx-green); color: #FFF; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .wx-always-note { display: flex; align-items: center; gap: 8px; font-size: var(--font-desc); color: rgba(0, 0, 0, 0.55); margin-bottom: 20px; }
+
+  /* ActionSheet */
+  .wx-action-sheet { width: 100%; background: var(--wx-gap); border-radius: 14px 14px 0 0; overflow: hidden; transform: translate3d(0, 100%, 0); transition: transform var(--dur-sheet-out) var(--ease-out); }
+  .wx-sys-mask.open .wx-action-sheet { transform: translate3d(0, 0, 0); transition: transform var(--dur-sheet-in) var(--ease-drawer); }
+  .wx-as-head { background: #FFFFFF; padding: 14px 16px; text-align: center; font-size: var(--font-cap); color: rgba(0, 0, 0, 0.50); border-bottom: 0.5px solid var(--wx-line); }
+  .wx-as-item {
+    appearance: none; width: 100%; min-height: 54px; padding: 14px 16px; border: none; border-bottom: 0.5px solid var(--wx-line); background: #FFFFFF;
+    color: rgba(0, 0, 0, 0.9); font-size: var(--font-body); font-family: inherit; text-align: center; cursor: pointer;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  }
+  .wx-as-item:active { background: #ECECEC; }
+  .wx-as-cancel { appearance: none; width: 100%; min-height: 56px; margin-top: 8px; padding: 14px 16px 20px; border: none; background: #FFFFFF; color: rgba(0, 0, 0, 0.9); font-size: var(--font-body); font-family: inherit; cursor: pointer; }
+  .wx-as-cancel:active { background: #ECECEC; }
+
+  /* Pay Sheet */
+  .wx-pay-sheet { width: 100%; background: #FFFFFF; border-radius: 14px 14px 0 0; padding: 16px 24px 32px; transform: translate3d(0, 100%, 0); transition: transform var(--dur-sheet-out) var(--ease-out); }
+  .wx-sys-mask.open .wx-pay-sheet { transform: translate3d(0, 0, 0); transition: transform var(--dur-sheet-in) var(--ease-drawer); }
+  .wx-pay-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+  .wx-pay-x { appearance: none; border: none; background: transparent; min-width: 44px; min-height: 44px; margin: -10px 0 -10px -12px; color: rgba(0, 0, 0, 0.6); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
+  .wx-pay-amt { text-align: center; font-size: var(--font-hero); font-weight: 700; color: rgba(0, 0, 0, 0.9); font-variant-numeric: tabular-nums; margin: 6px 0 18px; }
+  .wx-pay-method { display: flex; align-items: center; justify-content: space-between; padding: 13px 0; border-top: 0.5px solid var(--wx-line); border-bottom: 0.5px solid var(--wx-line); font-size: var(--font-sub); color: rgba(0, 0, 0, 0.85); margin-bottom: 20px; }
+
+  /* Scan Overlay */
+  .wx-scan-overlay {
+    position: absolute; inset: 0; background: #101418; z-index: 90; color: #FFFFFF;
+    display: flex; flex-direction: column; align-items: center; justify-content: space-between;
+    padding: 52px 24px 38px; opacity: 0; visibility: hidden; pointer-events: none;
+    transition: opacity 180ms var(--ease-out), visibility 180ms var(--ease-out);
+  }
+  .wx-scan-overlay.open { opacity: 1; visibility: visible; pointer-events: auto; }
+  .wx-scan-top { width: 100%; display: flex; align-items: center; justify-content: space-between; }
+  .wx-scan-close { appearance: none; width: 44px; height: 44px; border-radius: 50%; border: none; background: rgba(255, 255, 255, 0.14); color: #FFFFFF; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+  .wx-scan-frame { width: 240px; height: 170px; border-radius: 12px; border: 1.5px solid rgba(7, 193, 96, 0.72); background: rgba(7, 193, 96, 0.06); position: relative; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+  .wx-scan-laser { position: absolute; top: 4px; left: 10px; right: 10px; height: 2px; background: var(--wx-green); box-shadow: 0 0 10px var(--wx-green); }
+
+  /* ===== External Review Panel ===== */
+  .reviewer {
+    width: 368px; height: min(760px, calc(100vh - 32px));
+    background: var(--card); border: 1px solid var(--line); border-radius: 18px; box-shadow: var(--card-shadow);
+    padding: 14px; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; overscroll-behavior: contain;
+  }
+  .rev-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+  .rev-title { margin: 0; font-size: 14px; font-weight: 600; color: var(--ink); }
+  .ver-links { display: flex; gap: 4px; }
+  .v-link { font-size: 11px; font-weight: 500; color: var(--brand); text-decoration: none; padding: 3px 7px; border-radius: 6px; background: var(--brand-soft); }
+  .rev-note { margin: 0; font-size: 11.5px; line-height: 1.48; color: var(--ink-mid); }
+
+  .pool-box { background: var(--bg); border: 1px solid var(--line); border-radius: 13px; padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+  .pool-top { display: flex; align-items: center; justify-content: space-between; gap: 6px; font-size: 11px; font-weight: 600; color: var(--ink-mid); }
+  .pool-pill { padding: 2px 7px; border-radius: 999px; font-size: 10.5px; font-weight: 600; white-space: nowrap; }
+  .pool-pill.priority { background: var(--ok-soft); color: var(--ok); }
+  .pool-pill.reserve  { background: var(--brand-soft); color: var(--brand); }
+  .pool-pill.silent   { background: var(--warn-soft); color: var(--warn); }
+
+  .tag-grid { display: flex; flex-wrap: wrap; gap: 3px; }
+  .h-tag { font-size: 10px; padding: 2px 5px; border-radius: 5px; border: 1px solid var(--line); background: var(--card); color: var(--ink-sub); }
+  .h-tag.pass { background: var(--ok-soft); border-color: var(--ok-line); color: var(--ok); font-weight: 500; }
+  .h-tag.miss { background: var(--bad-soft); border-color: var(--bad-line); color: var(--bad); font-weight: 500; }
+  .h-tag.info { background: var(--brand-soft); border-color: var(--brand-line); color: var(--brand); font-weight: 500; }
+
+  .seg-row { display: flex; gap: 4px; }
+  .seg-btn { appearance: none; flex: 1; border: 1px solid var(--line); background: var(--card); color: var(--ink-mid); padding: 5px 3px; border-radius: 7px; font-size: 10.5px; font-weight: 500; cursor: pointer; font-family: inherit; text-align: center; }
+  .seg-btn.active { border-color: var(--brand); background: var(--brand); color: #FFFFFF; font-weight: 600; }
+
+  .rev-list { display: flex; flex-direction: column; gap: 2px; }
+  .rev-btn {
+    appearance: none; border: 1px solid transparent; background: var(--bg); color: var(--ink-mid);
+    padding: 5px 9px; border-radius: 7px; font-size: 11.5px; text-align: left; cursor: pointer; font-family: inherit;
+    display: flex; justify-content: space-between; gap: 6px;
+  }
+  .rev-btn.active { background: var(--brand); color: #FFFFFF; font-weight: 500; }
+  .rev-btn.muted-skip { opacity: 0.52; }
+
+  .rev-sim-row { display: flex; flex-wrap: wrap; gap: 4px; }
+  .rev-sim { appearance: none; border: 1px solid var(--line-strong); background: var(--card); color: var(--ink-mid); padding: 4px 8px; border-radius: 6px; font-size: 11px; font-weight: 500; cursor: pointer; font-family: inherit; }
+  .rev-json { margin: 0; padding: 8px; border-radius: 9px; background: #161922; color: #E2E8F0; font-size: 10.5px; line-height: 1.45; overflow-x: auto; white-space: pre-wrap; }
+
+  @media (hover: hover) and (pointer: fine) {
+    .choice-card:not(.selected):hover, .aes-card:not(.selected):hover, .price-opt:not(.selected):hover, .upload-area:hover, .action-card:hover { border-color: var(--line-strong); }
+    .rev-sim:hover { border-color: var(--brand); color: var(--brand); }
+    .v-link:hover { opacity: 0.85; }
+  }
+  @media (max-width: 780px) {
+    .stage { flex-direction: column; align-items: center; padding: 10px; height: auto; min-height: 100vh; overflow-y: auto; }
+    .reviewer { width: 375px; max-width: 100%; height: auto; max-height: none; }
+  }
+  @media (max-width: 460px) {
+    .stage { padding: 0; height: 100dvh; overflow: hidden; }
+    .phone { width: 100vw; height: 100dvh; min-height: 0; border-radius: 0; box-shadow: none; }
+    .wx-notch, .reviewer { display: none; }
+  }
+</style>
+</head>
+<body>
+<div class="stage">
+  <!-- ===== 375pt WeChat Viewport (v5 · Homepage One-Shot WeChat Collection + Auto-Advance + Always Back) ===== -->
+  <div id="phoneRoot" class="phone">
+    <header id="appHeader" class="wx-top">
+      <div class="wx-status">
+        <span>9:41</span>
+        <div class="wx-notch" aria-hidden="true"></div>
+        <span>5G 100%</span>
+      </div>
+      <div class="wx-nav">
+        <button id="btnBack" class="wx-back hidden" type="button" onclick="goBack()">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
+          <span>返回</span>
+        </button>
+        <div id="navTitle" class="wx-title">无限天真</div>
+        <div class="wx-capsule" aria-hidden="true">
+          <svg width="20" height="10" viewBox="0 0 22 10" fill="currentColor"><circle cx="4" cy="5" r="1.6"/><circle cx="11" cy="5" r="2.1"/><circle cx="18" cy="5" r="1.6"/></svg>
+          <span class="wx-cap-div"></span>
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5.2" stroke="currentColor" stroke-width="1.3"/><circle cx="7" cy="7" r="2" fill="currentColor"/></svg>
+        </div>
+      </div>
+    </header>
+
+    <div id="stageBar" class="stage-bar" role="progressbar" aria-valuemin="1" aria-valuemax="22" aria-valuenow="1" aria-label="入驻进度"></div>
+
+    <main id="screen" class="screen" tabindex="-1"></main>
+
+    <div class="home-bar" aria-hidden="true"><span></span></div>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+    <!-- ===== Homepage One-Shot Native WeChat Collection Cascade (1/3 Login -> 2/3 Phone -> 3/3 Location) ===== -->
+    <div id="wxLoginSheet" class="wx-sys-mask" onclick="if(event.target===this) closeWxSheet('wxLoginSheet')">
+      <div class="wx-native-sheet" role="dialog" aria-modal="true" aria-label="微信授权登录">
+        <div class="wx-auth-app">
+          <span class="wx-auth-app-l"><span class="wx-app-dot">天</span><span>无限天真</span><span style="color:rgba(0,0,0,0.55);font-weight:400;">申请</span></span>
+        </div>
+        <h2 class="wx-auth-title">使用你的微信登录</h2>
+        <div class="wx-native-row">
+          <div class="wx-native-row-left">
+            <span class="wx-native-ava">林</span>
+            <div>
+              <div style="font-size:var(--font-sub);font-weight:500;color:rgba(0,0,0,0.9);">林秀珍</div>
+              <div style="font-size:var(--font-cap);color:rgba(0,0,0,0.48);margin-top:2px;">微信账号</div>
+            </div>
+          </div>
+          <span class="wx-native-chk" id="wxLoginChkIcon"></span>
+        </div>
+        <div class="wx-native-btn-pair">
+          <button type="button" class="wx-btn-deny" onclick="closeWxSheet('wxLoginSheet')">拒绝</button>
+          <button type="button" class="wx-btn-allow" onclick="confirmWxLogin()">允许</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="wxPhoneSheet" class="wx-sys-mask" onclick="if(event.target===this) denyWxPhone()">
+      <div class="wx-native-sheet" role="dialog" aria-modal="true" aria-label="微信手机号授权">
+        <div class="wx-auth-app">
+          <span class="wx-auth-app-l"><span class="wx-app-dot">天</span><span>无限天真</span><span style="color:rgba(0,0,0,0.55);font-weight:400;">申请</span></span>
+        </div>
+        <h2 class="wx-auth-title">获取你的手机号</h2>
+        <div class="wx-native-row">
+          <div class="wx-native-row-left">
+            <div>
+              <div style="font-size:20px;font-weight:600;color:rgba(0,0,0,0.9);font-variant-numeric:tabular-nums;">138****8899</div>
+              <div style="font-size:var(--font-cap);color:rgba(0,0,0,0.48);margin-top:2px;">微信绑定号码</div>
+            </div>
+          </div>
+          <span class="wx-native-chk" id="wxPhoneChkIcon"></span>
+        </div>
+        <div class="wx-native-btn-pair">
+          <button type="button" class="wx-btn-deny" onclick="denyWxPhone()">不允许</button>
+          <button type="button" class="wx-btn-allow" onclick="confirmWxPhone()">允许</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="wxLocSheet" class="wx-sys-mask" onclick="if(event.target===this) denyWxLocation()">
+      <div class="wx-native-sheet" role="dialog" aria-modal="true" aria-label="微信位置授权">
+        <div class="wx-auth-app">
+          <span class="wx-auth-app-l"><span class="wx-app-dot">天</span><span>无限天真</span><span style="color:rgba(0,0,0,0.55);font-weight:400;">申请</span></span>
+        </div>
+        <h2 class="wx-auth-title">获取你的位置信息</h2>
+        <p class="wx-auth-sub">用于寄送毛线</p>
+        <div class="wx-native-btn-pair" style="margin-top:20px;">
+          <button type="button" class="wx-btn-deny" onclick="denyWxLocation()">拒绝</button>
+          <button type="button" class="wx-btn-allow" onclick="allowWxLocation()">允许</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- WeChat Native Address Book (Only if Location Rejected) -->
+    <div id="wxAddrSheet" class="wx-sys-mask" onclick="if(event.target===this) closeWxSheet('wxAddrSheet')">
+      <div class="wx-native-sheet" role="dialog" aria-modal="true" aria-label="微信收货地址">
+        <div class="wx-auth-app"><span class="wx-auth-app-l"><span class="wx-app-dot">天</span><span>我的收货地址</span></span></div>
+        <div class="wx-native-row" style="margin-bottom:16px;">
+          <div class="wx-native-row-left">
+            <div>
+              <div style="font-size:var(--font-sub);font-weight:500;color:rgba(0,0,0,0.9);">林秀珍　138****8899</div>
+              <div style="font-size:var(--font-desc);color:rgba(0,0,0,0.55);margin-top:3px;">四川省绵阳市涪城区跃进路 26 号</div>
+            </div>
+          </div>
+          <span class="wx-native-chk" id="wxAddrChkIcon"></span>
+        </div>
+        <div class="wx-native-btn-pair">
+          <button type="button" class="wx-btn-deny" onclick="closeWxSheet('wxAddrSheet')">取消</button>
+          <button type="button" class="wx-btn-allow" onclick="confirmWxAddr()">使用该地址</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- WeChat Native ActionSheet (wx.chooseMedia) -->
+    <div id="wxMediaSheet" class="wx-sys-mask" onclick="if(event.target===this) closeWxSheet('wxMediaSheet')">
+      <div class="wx-action-sheet" role="dialog" aria-modal="true" aria-label="选择照片方式">
+        <div id="wxMediaHint" class="wx-as-head">拍照或选照片</div>
+        <button type="button" class="wx-as-item" onclick="confirmWxMedia('camera')">
+          <span>拍摄</span>
+        </button>
+        <button id="wxMediaAlbumBtn" type="button" class="wx-as-item" onclick="confirmWxMedia('album')">
+          <span>从手机相册选择</span>
+        </button>
+        <button type="button" class="wx-as-cancel" onclick="closeWxSheet('wxMediaSheet')">取消</button>
+      </div>
+    </div>
+
+    <!-- WeChat Native Subscribe Message Sheet (wx.requestSubscribeMessage) -->
+    <div id="wxSubSheet" class="wx-sys-mask" onclick="if(event.target===this) closeWxSheet('wxSubSheet')">
+      <div class="wx-native-sheet" role="dialog" aria-modal="true" aria-label="微信订阅消息授权">
+        <div class="wx-auth-app"><span class="wx-auth-app-l"><span class="wx-app-dot">天</span><span>无限天真</span><span style="color:rgba(0,0,0,0.55);font-weight:400;">申请</span></span></div>
+        <h2 class="wx-auth-title">发送以下消息</h2>
+        <div class="wx-sub-row"><span class="wx-green-box" id="wxSubChkIcon"></span><span>进度通知</span></div>
+        <div class="wx-always-note">
+          <span style="width:14px;height:14px;border-radius:3px;border:1.5px solid var(--wx-green);background:var(--wx-green);color:#FFF;display:inline-flex;align-items:center;justify-content:center;font-size:10px;">✓</span>
+          <span>总是保持以上选择</span>
+        </div>
+        <div class="wx-native-btn-pair">
+          <button type="button" class="wx-btn-deny" onclick="closeWxSheet('wxSubSheet')">取消</button>
+          <button type="button" class="wx-btn-allow" onclick="confirmSubscribe()">允许</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- WeChat Native Pay Cashier Sheet (wx.requestPayment) -->
+    <div id="wxPaySheet" class="wx-sys-mask" onclick="if(event.target===this) closeWxSheet('wxPaySheet')">
+      <div class="wx-pay-sheet" role="dialog" aria-modal="true" aria-label="微信支付收银台">
+        <div class="wx-pay-top">
+          <button type="button" class="wx-pay-x" aria-label="关闭支付" onclick="closeWxSheet('wxPaySheet')">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+          </button>
+          <span style="font-size:var(--font-sub);font-weight:500;color:rgba(0,0,0,0.9);">微信支付</span>
+          <span style="width:32px;"></span>
+        </div>
+        <div style="text-align:center;font-size:var(--font-desc);color:rgba(0,0,0,0.65);">无限天真 · 押金</div>
+        <div class="wx-pay-amt">¥200.00</div>
+        <div class="wx-pay-method">
+          <span style="color:rgba(0,0,0,0.55);">付款方式</span>
+          <span style="display:inline-flex;align-items:center;gap:6px;font-weight:500;">
+            <span style="width:16px;height:16px;border-radius:50%;background:#FA9D3B;color:#FFF;font-size:11px;display:inline-flex;align-items:center;justify-content:center;">¥</span>
+            <span>零钱</span>
+          </span>
+        </div>
+        <button type="button" class="wx-btn-allow" style="width:100%;height:46px;" onclick="confirmPaid()">确认支付</button>
+      </div>
+    </div>
+
+    <!-- WeChat Native Full-Screen ScanCode Overlay (wx.scanCode) -->
+    <div id="wxScanOverlay" class="wx-scan-overlay" role="dialog" aria-modal="true" aria-label="微信扫一扫">
+      <div class="wx-scan-top">
+        <button type="button" class="wx-scan-close" aria-label="关闭扫一扫" onclick="closeWxScan()">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+        <span style="font-size:var(--font-body);font-weight:500;">扫一扫</span>
+        <span style="width:44px;"></span>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:center;gap:14px;">
+        <div class="wx-scan-frame">
+          <div class="wx-scan-laser"></div>
+          <svg width="140" height="46" viewBox="0 0 140 46" fill="none" aria-hidden="true" opacity="0.55">
+            <path d="M12 6v34M18 6v34M22 6v34M30 6v34M34 6v34M42 6v34M48 6v34M56 6v34M60 6v34M68 6v34M74 6v34M82 6v34M88 6v34M96 6v34M104 6v34M110 6v34M118 6v34M126 6v34" stroke="#FFF" stroke-width="2.5"/>
+          </svg>
+        </div>
+        <div style="font-size:var(--font-desc);color:rgba(255,255,255,0.75);">对准快递单条形码</div>
+      </div>
+      <button type="button" class="wx-btn-allow" style="width:100%;max-width:260px;" onclick="confirmWxScan()">识别单号</button>
+    </div>
+  </div>
+
+  <!-- ===== External Review Panel ===== -->
+  <aside class="reviewer" aria-label="v5 评审台">
+    <div class="rev-head">
+      <h2 class="rev-title">织女筛选 v5 · 点选直进版</h2>
+      <div class="ver-links"><a class="v-link" href="./weaver-funnel-prototype-v4.html">v4</a></div>
+    </div>
+    <p class="rev-note">首页一次性串采<strong>微信登录 + 手机号 + 定位</strong>；全流程去掉底部「下一步」，所有选择题与拍照项<strong>点选即直进下一页</strong>，左上角全程保留「返回」。</p>
+
+    <div class="pool-box">
+      <div class="pool-top">
+        <span>后台 10 题审美暗标 + 综合分流</span>
+        <span id="poolBadge" class="pool-pill priority">优先库</span>
+      </div>
+      <div id="hiddenTagGrid" class="tag-grid"></div>
+      <div id="poolNote" style="font-size:11px;color:var(--ink-mid);line-height:1.4;"></div>
+      <div id="poolBtns" class="seg-row"></div>
+    </div>
+
+    <div id="revList" class="rev-list"></div>
+
+    <div class="rev-sim-row">
+      <button class="rev-sim" type="button" onclick="simFillPass()">一键填10题标准答案</button>
+      <button class="rev-sim" type="button" onclick="simFillReserve()">模拟8/10进储备库</button>
+      <button class="rev-sim" type="button" onclick="simFillMiss()">模拟未达线静默</button>
+      <button class="rev-sim" type="button" onclick="simSampleSigned()">测：仓库已签收</button>
+      <button class="rev-sim" type="button" onclick="resetAll()">重置全程</button>
+    </div>
+
+    <pre id="specJson" class="rev-json"></pre>
+  </aside>
+</div>
+
+<script>
+const AESTHETIC_10 = [
+  { key: "aes_neat",   tag: "1.工整", title: "哪一个针脚更整齐？",   lead: "看针眼大不大、排得齐不齐",   artA: "neat_good",    artB: "neat_bad",     ans: 0 },
+  { key: "aes_plump",  tag: "2.饱满", title: "哪一个塞得更满？",     lead: "看哪只圆圆鼓鼓的",           artA: "plump_bad",    artB: "plump_good",   ans: 1 },
+  { key: "aes_color",  tag: "3.配色", title: "哪一个颜色更好看？",   lead: "看哪只颜色搭得顺眼",         artA: "color_good",   artB: "color_bad",    ans: 0 },
+  { key: "aes_face",   tag: "4.五官", title: "哪一个眼睛更正？",     lead: "看两只眼睛平不平、歪不歪",   artA: "face_bad",     artB: "face_good",    ans: 1 },
+  { key: "aes_stripe", tag: "5.换色", title: "哪一个换色更齐？",     lead: "看两种颜色接缝直不直",       artA: "stripe_good",  artB: "stripe_bad",   ans: 0 },
+  { key: "aes_finish", tag: "6.收口", title: "哪一个背面更干净？",   lead: "看背面有没有露出来的线头",   artA: "finish_bad",   artB: "finish_good",  ans: 1 },
+  { key: "aes_ratio",  tag: "7.比例", title: "哪一个样子更好看？",   lead: "看头、身子和耳朵大小配不配", artA: "ratio_good",   artB: "ratio_bad",    ans: 0 },
+  { key: "aes_edge",   tag: "8.平整", title: "哪一个边边更平整？",   lead: "看四条边直不直、卷不卷",     artA: "edge_bad",     artB: "edge_good",    ans: 1 },
+  { key: "aes_sym",    tag: "9.对称", title: "哪一个两边一样大？",   lead: "看蝴蝶结左边和右边像不像",   artA: "sym_good",     artB: "sym_bad",      ans: 0 },
+  { key: "aes_clean",  tag: "10.精致",title: "哪一个更干净？",       lead: "看表面有没有脏东西和胶印",   artA: "clean_bad",    artB: "clean_good",   ans: 1 }
+];
+
+const PATTERN_QUIZ_4 = [
+  {
+    key: "pat_zh", tag: "图解1·中文", kind: "base",
+    title: "下面这一圈钩完一共几针？",
+    cardText: "第 4 圈：隔 2 针加 1 针，钩 6 组",
+    opts: ["18 针", "24 针", "30 针", "36 针"], ans: 1
+  },
+  {
+    key: "pat_sym", tag: "图解2·符号", kind: "base",
+    title: "这个钩织符号代表什么针？",
+    cardSvg: "sym_inc",
+    opts: ["短针", "短针加针", "短针减针", "长针"], ans: 1
+  },
+  {
+    key: "pat_abbr", tag: "图解3·字母", kind: "bonus_abbr",
+    title: "这行字母图解钩完一共几针？",
+    cardText: "R4: (2X, V) × 6",
+    opts: ["18 针", "24 针", "30 针", "看不懂字母"], ans: 1
+  },
+  {
+    key: "pat_en", tag: "图解4·纯英文", kind: "bonus_en",
+    title: "英文图解里「BLO」要挑哪根线？",
+    cardText: "R5: BLO 18 sc",
+    opts: ["只挑内半针", "只挑外半针", "两根线一起挑", "看不懂英文"], ans: 0
+  }
+];
+
+const WAGE_QUESTIONS = [
+  { id: "wage_1", idx: 0, art: "mushroom_keychain", name: "小蘑菇钥匙扣", spec: "高约 6 厘米 · 约 40 分钟", opts: ["8–15元", "16–25元", "26–40元", "45元以上"], fairIdx: 0 },
+  { id: "wage_2", idx: 1, art: "bear_doll",         name: "小熊玩偶",     spec: "高约 12 厘米 · 约 2.5 小时", opts: ["25–40元", "45–65元", "70–100元", "120元以上"], fairIdx: 1 },
+  { id: "wage_3", idx: 2, art: "dressed_doll",      name: "穿衣大玩偶",   spec: "高约 22 厘米 · 约 6 小时", opts: ["60–90元", "95–140元", "150–210元", "240元以上"], fairIdx: 1 }
+];
+
+const STITCHES = [
+  { r: "第 1 圈", t: "红线环起 6 短针" },
+  { r: "第 2 圈", t: "每针加 1，共 12 针" },
+  { r: "第 3 圈", t: "隔 1 加 1，共 18 针" },
+  { r: "第 4 圈", t: "换奶白线，钩 18 针" },
+  { r: "第 5 圈", t: "减针塞棉，藏好线头" }
+];
+
+const YARNS_12 = [
+  { n: "奶白", c: "#FAF8F3" }, { n: "米黄", c: "#E6DAC7" }, { n: "浅棕", c: "#B47449" }, { n: "粉色", c: "#EBB7BE" },
+  { n: "大红", c: "#B85542" }, { n: "鹅黄", c: "#EED27E" }, { n: "浅绿", c: "#7B9C87" }, { n: "浅蓝", c: "#88A4B8" },
+  { n: "浅紫", c: "#AEA0B8" }, { n: "浅灰", c: "#C5C7CC" }, { n: "深棕", c: "#5A4438" }, { n: "黑色", c: "#2B2D33" }
+];
+
+/* Streamlined 23-Route Flow: All WeChat Native Collection Done Upfront on Homepage! */
+const SCREENS = [
+  { id: "welcome",        label: "0. 首页（一次性微信3连采集）", macro: 0, sub: 0.35, stage: "wx.3in1" },
+  { id: "phone_fallback", label: "0-a 补绑手机（拒绝授权兜底）", macro: 0, sub: 0.50, stage: "fallback" },
+  { id: "addr_fallback",  label: "0-b 补填地址（拒绝定位兜底）", macro: 0, sub: 0.65, stage: "fallback" },
+  { id: "deposit_notice", label: "1. 200元保证金说明（点选直进）", macro: 0, sub: 1.00, stage: "deposit_ack" },
+  { id: "aes",              label: "2-1 审美标准测试（10题·点即进）", macro: 1, sub: 0.25, stage: "aes_10" },
+  { id: "pattern_quiz",     label: "2-2 读图解实测（4题·英文加分）",  macro: 1, sub: 0.42, stage: "pat_4" },
+  { id: "crochet_years",    label: "3-1 钩织年限（含7年以上）",      macro: 1, sub: 0.50, stage: "profile" },
+  { id: "main_category",    label: "3-2 最常钩哪一类（Q1）",         macro: 1, sub: 0.58, stage: "profile" },
+  { id: "pattern_habit",    label: "3-3 看哪种图解多（Q2）",         macro: 1, sub: 0.66, stage: "profile" },
+  { id: "can_create",       label: "3-4 会不会创作（5档）",          macro: 1, sub: 0.74, stage: "creator" },
+  { id: "can_draw_pattern", label: "3-5 会不会画/写图解",            macro: 1, sub: 0.80, stage: "creator" },
+  { id: "experience",       label: "3-6 有无接单经历（点即进）",     macro: 1, sub: 0.86, stage: "profile" },
+  { id: "daily_time",       label: "3-7 每天可钩时长（点即进）",     macro: 1, sub: 0.92, stage: "profile" },
+  { id: "wage",             label: "3-8 合理手工费（3件·点即进）",   macro: 1, sub: 1.00, stage: "wage_tag" },
+  { id: "order_proof",    label: "4-1 接单截图凭证（选完直进）",   macro: 2, sub: 0.20, stage: "wx.media" },
+  { id: "p1",             label: "4-2 作品正面（日期纸条实拍）",   macro: 2, sub: 0.40, stage: "wx.camera" },
+  { id: "p2",             label: "4-3 作品针脚近照",               macro: 2, sub: 0.60, stage: "wx.media" },
+  { id: "p3",             label: "4-4 作品背面收口",               macro: 2, sub: 0.80, stage: "wx.media" },
+  { id: "wait_1",         label: "4-5 等待初审（订阅通知·静默）",  macro: 2, sub: 1.00, stage: "wait_eval" },
+  { id: "test_guide",     label: "5-1 钩织测试题（暗标过线）",     macro: 3, sub: 0.20, stage: "trial" },
+  { id: "t1",             label: "5-2 测试照：正面附尺",           macro: 3, sub: 0.40, stage: "wx.media" },
+  { id: "t2",             label: "5-3 测试照：背面收口",           macro: 3, sub: 0.60, stage: "wx.media" },
+  { id: "t3",             label: "5-4 测试照：侧面饱满",           macro: 3, sub: 0.80, stage: "wx.media" },
+  { id: "wait_2",         label: "5-5 等测试复核（静默卡口）",     macro: 3, sub: 1.00, stage: "wait_trial" },
+  { id: "ship_addr",      label: "6-1 预约快递上门取件（快递100）", macro: 4, sub: 0.25, stage: "kd100.cOrder" },
+  { id: "ship_no",        label: "6-2 村镇驿站自寄兜底（扫码）",   macro: 4, sub: 0.40, stage: "fallback" },
+  { id: "wait_3",         label: "6-3 等取件与签收入档（免纸条）", macro: 4, sub: 0.65, stage: "wait_sample" },
+  { id: "deposit_pay",    label: "7-1 缴纳 200 元（免拍身份证）",  macro: 4, sub: 0.85, stage: "wx.pay" },
+  { id: "approved",       label: "7-2 正式开启接单",               macro: 4, sub: 1.00, stage: "active" }
+];
+
+const POOL_MODES = [
+  { id: "auto",       name: "按暗标自动判" },
+  { id: "silent_out", name: "强测:未达线" },
+  { id: "reserve",    name: "强测:储备库" },
+  { id: "priority",   name: "强测:优先库" }
+];
+
+const state = {
+  view: "welcome",
+  wxAgreed: false,
+  wxUserId: "usr_w_9205",
+  weaverCode: "609205",
+  phone: "",
+  phoneSource: "",
+  phoneDenied: false,
+  locAuthorized: false,
+  locDenied: false,
+  locationSource: "",
+  weaverAddr: "",
+  depositAccepted: false,
+  aesIdx: 0,
+  aesAns: {},
+  patIdx: 0,
+  patAns: {},
+  crochetYears: null,
+  mainCategory: null,
+  patternHabit: null,
+  createLevel: null,
+  drawPattern: null,
+  hasExperience: null,
+  dailyHours: null,
+  wageIdx: 0,
+  wageAns: {},
+  orderProofUploaded: false,
+  pPhotos: [false, false, false],
+  subscribed: { wait_1: false, wait_2: false, wait_3: false },
+  stitchIdx: 0,
+  tPhotos: [false, false, false],
+  pickupAddr: "",
+  pickupSlot: "今天 14:00-16:00",
+  shipMode: "kd100_pickup",
+  trackingNo: "",
+  sampleSigned: false,
+  depositPaid: false,
+  poolMode: "auto",
+  pendingMediaTarget: null
+};
+
+let autoTimer = null;
+function scheduleAdvance(fn, ms = 190) {
+  clearTimeout(autoTimer);
+  autoTimer = setTimeout(fn, ms);
+}
+
+/* ===== Icons ===== */
+const ICO = {
+  check: (s = 14) => `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>`,
+  cross: (s = 14) => `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M7 7l10 10M17 7L7 17"/></svg>`,
+  speaker: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5L6 9H3v6h3l5 4V5z"/><path d="M15.5 8.5a4.5 4.5 0 010 7"/></svg>`,
+  camera: `<svg width="32" height="32" viewBox="0 0 36 36" fill="none" aria-hidden="true"><rect x="4.5" y="9.5" width="27" height="20" rx="4.5" stroke="var(--brand)" stroke-width="1.7"/><path d="M12.5 9.5l2-3.5h7l2 3.5" stroke="var(--brand)" stroke-width="1.7" stroke-linejoin="round"/><circle cx="18" cy="19.5" r="5.2" fill="var(--brand-soft)" stroke="var(--brand)" stroke-width="1.7"/><circle cx="26.5" cy="14" r="1.2" fill="var(--brand)"/></svg>`,
+  scan: `<svg width="32" height="32" viewBox="0 0 36 36" fill="none" aria-hidden="true"><path d="M6 12V7.5A1.5 1.5 0 017.5 6H12M30 12V7.5A1.5 1.5 0 0028.5 6H24M6 24v4.5A1.5 1.5 0 007.5 30H12M30 24v4.5a1.5 1.5 0 01-1.5 1.5H24" stroke="var(--wx-green)" stroke-width="1.9" stroke-linecap="round"/><path d="M11 12v12M15 12v12M19.5 12v12M22.5 12v12M25.5 12v12" stroke="var(--ink)" stroke-width="1.5" stroke-linecap="round"/><line x1="8" y1="18" x2="28" y2="18" stroke="var(--wx-green)" stroke-width="1.9" stroke-linecap="round"/></svg>`,
+  coin: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9 8.5l3 3 3-3M9 12.5h6M9 15.5h6M12 11.5v6"/></svg>`,
+  yarn: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M5.5 9.5c4.2-2 8.8-2 13 0M5 14c5-1.2 9.5-.5 14 1.5M8.5 19c3.5-3 6.8-6 9-11"/></svg>`,
+  pin: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s7-5.6 7-11a7 7 0 10-14 0c0 5.4 7 11 7 11z"/><circle cx="12" cy="10" r="2.5"/></svg>`,
+  phone: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="2.5" width="12" height="19" rx="2.5"/><line x1="10" y1="18" x2="14" y2="18"/></svg>`,
+  clock: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>`,
+  idCard: `<svg width="32" height="32" viewBox="0 0 36 36" fill="none" aria-hidden="true"><rect x="4" y="8" width="28" height="20" rx="3.5" stroke="var(--brand)" stroke-width="1.7" fill="var(--brand-soft)"/><circle cx="12.5" cy="16" r="2.8" stroke="var(--brand)" stroke-width="1.6" fill="#FFF"/><path d="M8.5 23c.8-2.2 2.2-3.2 4-3.2s3.2 1 4 3.2" stroke="var(--brand)" stroke-width="1.6" stroke-linecap="round"/><path d="M20 14h8M20 18.5h8M20 22.5h5" stroke="var(--brand)" stroke-width="1.6" stroke-linecap="round"/></svg>`,
+  receipt: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 3h14v18l-2.5-1.5L14 21l-2-1.5L10 21l-2.5-1.5L5 21V3z"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>`,
+  spark: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8.5 12.5l2.3 2.3 4.8-5"/></svg>`,
+  shield: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 3.2v5.8c0 5-3.4 8.2-8 9.5-4.6-1.3-8-4.5-8-9.5V6.2L12 3z"/><path d="M8.8 12.2l2.2 2.2 4.5-4.6"/></svg>`,
+  refund: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9h11a5 5 0 010 10H8"/><path d="M8 5L4 9l4 4"/></svg>`,
+  copy: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>`,
+  info: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>`,
+  wxBubble: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.5 4.5c4.2 0 7.5 2.7 7.5 6s-3.3 6-7.5 6c-.9 0-1.8-.1-2.6-.4L4 17.5l.8-2.4C3.1 13.9 2 12.3 2 10.5c0-3.3 3.3-6 7.5-6z"/><path d="M15.8 10.8c3.4.3 6.2 2.4 6.2 5.1 0 1.4-.8 2.8-2.1 3.7l.6 1.9-2.2-1.1c-.7.2-1.4.3-2.2.3-2.8 0-5.2-1.4-6-3.4"/></svg>`,
+  chevron: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>`
+};
+
+function radioHtml() { return `<span class="weui-radio" aria-hidden="true">${ICO.check(12)}</span>`; }
+
+document.getElementById("wxLoginChkIcon").innerHTML = ICO.check(18);
+document.getElementById("wxAddrChkIcon").innerHTML = ICO.check(18);
+document.getElementById("wxPhoneChkIcon").innerHTML = ICO.check(18);
+document.getElementById("wxSubChkIcon").innerHTML = ICO.check(12);
+
+function showToast(msg, kind = "ok") {
+  const el = document.getElementById("toast");
+  const ico = kind === "warn" ? `<span style="color:#FCD34D;display:inline-flex;">${ICO.info}</span>` : `<span style="color:#86EFAC;display:inline-flex;">${ICO.check(14)}</span>`;
+  el.innerHTML = `${ico}<span>${msg}</span>`;
+  el.classList.add("show");
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => el.classList.remove("show"), kind === "warn" ? 2400 : 1800);
+}
+function detectCarrier(v) {
+  const s = String(v || "").trim().toUpperCase();
+  if (s.startsWith("SF")) return "顺丰速运";
+  if (s.startsWith("ZTO") || /^7[358]\d{10,}$/.test(s)) return "中通快递";
+  if (s.startsWith("YT")) return "圆通速递";
+  if (s.startsWith("JT")) return "极兔速递";
+  return "";
+}
+function todayLabel() { const d = new Date(); return `${d.getMonth() + 1}月${d.getDate()}日`; }
+
+/* ===== Homepage One-Shot WeChat Native Collection Cascade ===== */
+function openWxSheet(id) { document.getElementById(id)?.classList.add("open"); }
+function closeWxSheet(id) { document.getElementById(id)?.classList.remove("open"); }
+function closeAllWxSheets() {
+  for (const id of ["wxLoginSheet", "wxPhoneSheet", "wxLocSheet", "wxAddrSheet", "wxMediaSheet", "wxSubSheet", "wxPaySheet"]) closeWxSheet(id);
+  closeWxScan();
+}
+
+function startHomepageWxCollection() {
+  if (!state.wxAgreed) { openWxSheet("wxLoginSheet"); return; }
+  if (!state.phone && !state.phoneDenied) { openWxSheet("wxPhoneSheet"); return; }
+  if (!state.locAuthorized && !state.locDenied) { openWxSheet("wxLocSheet"); return; }
+  routeAfterHomeCollection();
+}
+
+function confirmWxLogin() {
+  closeWxSheet("wxLoginSheet");
+  state.wxAgreed = true;
+  renderReviewer();
+  /* Immediately cascade Step 2/3: WeChat Phone Number */
+  setTimeout(() => {
+    if (!state.phone && !state.phoneDenied) openWxSheet("wxPhoneSheet");
+    else if (!state.locAuthorized && !state.locDenied) openWxSheet("wxLocSheet");
+    else routeAfterHomeCollection();
+  }, 200);
+}
+
+function confirmWxPhone() {
+  closeWxSheet("wxPhoneSheet");
+  state.phone = "13805718899";
+  state.phoneSource = "wx_get_phone_number";
+  state.phoneDenied = false;
+  if (state.view === "phone_fallback") {
+    showToast("已授权微信手机号");
+    scheduleAdvance(() => jump(state.locDenied && !state.weaverAddr ? "addr_fallback" : "deposit_notice", "fwd"), 160);
+    return;
+  }
+  renderReviewer();
+  /* Immediately cascade Step 3/3: WeChat Location */
+  setTimeout(() => {
+    if (!state.locAuthorized && !state.locDenied) openWxSheet("wxLocSheet");
+    else routeAfterHomeCollection();
+  }, 200);
+}
+
+function denyWxPhone() {
+  closeWxSheet("wxPhoneSheet");
+  state.phoneDenied = true;
+  if (state.view === "phone_fallback") return;
+  renderReviewer();
+  setTimeout(() => {
+    if (!state.locAuthorized && !state.locDenied) openWxSheet("wxLocSheet");
+    else routeAfterHomeCollection();
+  }, 200);
+}
+
+function allowWxLocation() {
+  closeWxSheet("wxLocSheet");
+  state.locAuthorized = true;
+  state.locDenied = false;
+  state.locationSource = "wx_fuzzy_location";
+  state.weaverAddr = "浙江省杭州市滨江区西兴街道";
+  routeAfterHomeCollection();
+}
+
+function denyWxLocation() {
+  closeWxSheet("wxLocSheet");
+  state.locAuthorized = false;
+  state.locDenied = true;
+  state.locationSource = "manual_input";
+  routeAfterHomeCollection();
+}
+
+function routeAfterHomeCollection() {
+  if (!state.phone) {
+    jump("phone_fallback", "fwd");
+    return;
+  }
+  if (!state.weaverAddr) {
+    jump("addr_fallback", "fwd");
+    return;
+  }
+  jump("deposit_notice", "fwd");
+  showToast("已登录，开始吧");
+}
+
+function confirmWxAddr() {
+  closeWxSheet("wxAddrSheet");
+  if (state.view === "ship_addr") {
+    state.pickupAddr = "四川省绵阳市涪城区跃进路 26 号";
+    showToast("地址已选好");
+    render("none");
+    return;
+  }
+  state.locationSource = "wx_choose_address";
+  state.weaverAddr = "四川省绵阳市涪城区跃进路 26 号";
+  showToast("地址已选好");
+  render("none");
+  scheduleAdvance(() => jump("deposit_notice", "fwd"), 240);
+}
+
+/* Native Media / Scan / Subscribe / Pay */
+function openWxMedia(targetKey, cameraOnly = false, hintText = "拍照或选照片") {
+  state.pendingMediaTarget = targetKey;
+  document.getElementById("wxMediaHint").textContent = hintText;
+  document.getElementById("wxMediaAlbumBtn").style.display = cameraOnly ? "none" : "flex";
+  openWxSheet("wxMediaSheet");
+}
+
+function confirmWxMedia(src) {
+  closeWxSheet("wxMediaSheet");
+  const t = state.pendingMediaTarget;
+  let nextView = null;
+  if (t === "order_proof") { state.orderProofUploaded = true; nextView = "p1"; showToast("已上传"); }
+  else if (t === "p0") { state.pPhotos[0] = true; nextView = "p2"; showToast("第 1 张已拍好"); }
+  else if (t === "p1") { state.pPhotos[1] = true; nextView = "p3"; showToast("第 2 张已选好"); }
+  else if (t === "p2") { state.pPhotos[2] = true; nextView = "wait_1"; showToast("3 张照片已发好"); }
+  else if (t === "t0") { state.tPhotos[0] = true; nextView = "t2"; showToast("第 1 张已选好"); }
+  else if (t === "t1") { state.tPhotos[1] = true; nextView = "t3"; showToast("第 2 张已选好"); }
+  else if (t === "t2") { state.tPhotos[2] = true; nextView = "wait_2"; showToast("3 张照片已发好"); }
+  render("none");
+  if (nextView) scheduleAdvance(() => jump(nextView, "fwd"), 320);
+}
+
+function openWxScan() { document.getElementById("wxScanOverlay").classList.add("open"); }
+function closeWxScan() { document.getElementById("wxScanOverlay").classList.remove("open"); }
+function confirmWxScan() {
+  closeWxScan();
+  state.shipMode = "self_dropoff";
+  state.trackingNo = "SF1234567890";
+  showToast("单号已扫好");
+  render("none");
+  scheduleAdvance(() => jump("wait_3", "fwd"), 280);
+}
+
+function pickSlot(slot) {
+  state.pickupSlot = slot;
+  render("none");
+}
+
+function confirmKd100Pickup() {
+  if (!state.pickupAddr) {
+    openWxSheet("wxAddrSheet");
+    showToast("先选一下上门地址", "warn");
+    return;
+  }
+  state.shipMode = "kd100_pickup";
+  state.trackingNo = `YT9823${state.weaverCode}`;
+  showToast("已约好快递员上门");
+  jump("wait_3", "fwd");
+}
+
+function confirmSubscribe() {
+  closeWxSheet("wxSubSheet");
+  if (state.view in state.subscribed) state.subscribed[state.view] = true;
+  showToast("已开启消息提醒");
+  render("none");
+}
+
+function confirmPaid() {
+  closeWxSheet("wxPaySheet");
+  state.depositPaid = true;
+  showToast("支付成功，可以开始接单啦");
+  jump("approved", "fwd");
+}
+
+/* ===== 10 Aesthetic SVGs + Helpers ===== */
+function aesArtSvg(kind) {
+  const w = (inner) => `<svg width="144" height="164" viewBox="0 0 144 156" fill="none" aria-hidden="true">${inner}</svg>`;
+  if (kind === "neat_good") return w(`<rect x="16" y="20" width="112" height="116" rx="14" fill="#F2E7D8" stroke="#9C846B" stroke-width="1.6"/><g stroke="#6E553D" stroke-width="2" stroke-linecap="round"><path d="M30 40l10 10m0-10l-10 10M50 40l10 10m0-10l-10 10M70 40l10 10m0-10l-10 10M90 40l10 10m0-10l-10 10M106 40l10 10m0-10l-10 10"/><path d="M30 64l10 10m0-10l-10 10M50 64l10 10m0-10l-10 10M70 64l10 10m0-10l-10 10M90 64l10 10m0-10l-10 10M106 64l10 10m0-10l-10 10"/><path d="M30 88l10 10m0-10l-10 10M50 88l10 10m0-10l-10 10M70 88l10 10m0-10l-10 10M90 88l10 10m0-10l-10 10M106 88l10 10m0-10l-10 10"/><path d="M30 110l10 10m0-10l-10 10M50 110l10 10m0-10l-10 10M70 110l10 10m0-10l-10 10M90 110l10 10m0-10l-10 10M106 110l10 10m0-10l-10 10"/></g>`);
+  if (kind === "neat_bad") return w(`<path d="M20 24c32-7 68 8 104-3 5 36-8 76 2 112-34 7-74-8-108 2 6-38-6-75 2-111z" fill="#EADBC8" stroke="#9C846B" stroke-width="1.6"/><circle cx="52" cy="56" r="10" fill="#FFF" stroke="#B69B7F"/><circle cx="96" cy="78" r="11" fill="#FFF" stroke="#B69B7F"/><circle cx="64" cy="108" r="9" fill="#FFF" stroke="#B69B7F"/><g stroke="#7C624A" stroke-width="1.8" stroke-linecap="round"><path d="M32 38l14 7m-4-11l-7 13M74 34l8 15M104 42l12 9M30 82l16 6M70 64l10 14M40 118l11 9M92 108l16 10"/></g>`);
+  if (kind === "plump_good") return w(`<ellipse cx="72" cy="134" rx="34" ry="7" fill="rgba(17,24,39,0.06)"/><path d="M26 84c0-52 92-52 92 0z" fill="#B85542" stroke="#7A3124" stroke-width="1.8"/><circle cx="52" cy="60" r="6" fill="#FFF"/><circle cx="88" cy="56" r="5" fill="#FFF"/><circle cx="98" cy="72" r="4" fill="#FFF"/><rect x="49" y="84" width="46" height="48" rx="16" fill="#F4EDE2" stroke="#8C7B6B" stroke-width="1.8"/>`);
+  if (kind === "plump_bad") return w(`<ellipse cx="74" cy="134" rx="38" ry="6" fill="rgba(17,24,39,0.06)"/><path d="M24 90c12-22 28-8 46-24 18 14 34-4 50 22-32 7-64 8-96 2z" fill="#B85542" stroke="#7A3124" stroke-width="1.8"/><circle cx="58" cy="77" r="4" fill="#FFF"/><circle cx="94" cy="78" r="3.5" fill="#FFF"/><path d="M55 90l-10 42c16 4 38 3 52-2l-7-40z" fill="#F4EDE2" stroke="#8C7B6B" stroke-width="1.8"/>`);
+  if (kind === "color_good") return w(`<circle cx="72" cy="54" r="24" fill="#F4EDE2" stroke="#8C7B6B" stroke-width="1.6"/><path d="M50 42c6-18 38-18 44 0z" fill="#B85542" stroke="#7A3124" stroke-width="1.5"/><rect x="48" y="78" width="48" height="48" rx="16" fill="#7B9C87" stroke="#4D6B58" stroke-width="1.6"/><rect x="46" y="75" width="52" height="10" rx="5" fill="#E6DAC7" stroke="#A69681" stroke-width="1.3"/>`);
+  if (kind === "color_bad") return w(`<circle cx="72" cy="54" r="24" fill="#FACC15" stroke="#A16207" stroke-width="1.6"/><path d="M50 42c6-18 38-18 44 0z" fill="#D946EF" stroke="#86198F" stroke-width="1.5"/><rect x="48" y="78" width="48" height="48" rx="16" fill="#22C55E" stroke="#15803D" stroke-width="1.6"/><rect x="46" y="75" width="52" height="10" rx="5" fill="#EF4444"/>`);
+  if (kind === "face_good") return w(`<circle cx="72" cy="78" r="46" fill="#F4EDE2" stroke="#8C7B6B" stroke-width="1.8"/><circle cx="55" cy="72" r="4.2" fill="#1D2B4A"/><circle cx="89" cy="72" r="4.2" fill="#1D2B4A"/><circle cx="46" cy="84" r="6" fill="#F4C2C2" fill-opacity="0.7"/><circle cx="98" cy="84" r="6" fill="#F4C2C2" fill-opacity="0.7"/><path d="M64 88q8 7 16 0" stroke="#6E5849" stroke-width="2.2" stroke-linecap="round" fill="none"/>`);
+  if (kind === "face_bad") return w(`<circle cx="72" cy="78" r="46" fill="#F4EDE2" stroke="#8C7B6B" stroke-width="1.8"/><circle cx="52" cy="60" r="6" fill="#1D2B4A"/><circle cx="94" cy="78" r="3" fill="#1D2B4A"/><path d="M62 96l22-8" stroke="#6E5849" stroke-width="2.4" stroke-linecap="round"/>`);
+  if (kind === "stripe_good") return w(`<rect x="24" y="24" width="96" height="108" rx="18" fill="#F4EDE2" stroke="#8C7B6B" stroke-width="1.6"/><rect x="25" y="48" width="94" height="22" fill="#293B63"/><rect x="25" y="90" width="94" height="22" fill="#B85542"/>`);
+  if (kind === "stripe_bad") return w(`<rect x="24" y="24" width="96" height="108" rx="18" fill="#F4EDE2" stroke="#8C7B6B" stroke-width="1.6"/><path d="M25 50l20-6 18 9 20-7 18 8 18-5v22l-20 5-18-8-20 7-18-6-18 4z" fill="#293B63"/><path d="M25 94l24-8 22 9 24-7 24 6v20l-24-5-24 6-22-7-24 4z" fill="#B85542"/>`);
+  if (kind === "finish_good") return w(`<ellipse cx="72" cy="76" rx="44" ry="38" fill="#B85542" stroke="#7A3124" stroke-width="1.6"/><rect x="36" y="76" width="72" height="36" rx="16" fill="#F4EDE2" stroke="#8C7B6B" stroke-width="1.5"/><line x1="38" y1="77" x2="106" y2="77" stroke="#7A3124" stroke-width="1.8"/>`);
+  if (kind === "finish_bad") return w(`<ellipse cx="72" cy="76" rx="44" ry="38" fill="#B85542" stroke="#7A3124" stroke-width="1.6"/><rect x="36" y="76" width="72" height="36" rx="16" fill="#F4EDE2" stroke="#8C7B6B" stroke-width="1.5"/><circle cx="72" cy="77" r="7" fill="#7A3124"/><path d="M72 77c18-10 34 12 52-14M72 77c-16 14-26 26-44 20" stroke="#7A3124" stroke-width="2.6" stroke-linecap="round" fill="none"/>`);
+  if (kind === "ratio_good") return w(`<circle cx="50" cy="36" r="10" fill="#C98A5B" stroke="#7A4C2C" stroke-width="1.5"/><circle cx="94" cy="36" r="10" fill="#C98A5B" stroke="#7A4C2C" stroke-width="1.5"/><circle cx="72" cy="56" r="25" fill="#D49A6A" stroke="#7A4C2C" stroke-width="1.6"/><rect x="50" y="80" width="44" height="46" rx="18" fill="#293B63" stroke="#1D2B4A" stroke-width="1.6"/>`);
+  if (kind === "ratio_bad") return w(`<circle cx="40" cy="30" r="17" fill="#C98A5B" stroke="#7A4C2C" stroke-width="1.5"/><circle cx="96" cy="40" r="6" fill="#C98A5B" stroke="#7A4C2C" stroke-width="1.5"/><ellipse cx="72" cy="64" rx="34" ry="28" fill="#D49A6A" stroke="#7A4C2C" stroke-width="1.6"/><rect x="60" y="92" width="24" height="38" rx="8" fill="#293B63" stroke="#1D2B4A" stroke-width="1.6"/>`);
+  if (kind === "edge_good") return w(`<rect x="24" y="28" width="96" height="96" rx="12" fill="#E6DAC7" stroke="#8C7B6B" stroke-width="1.8"/><rect x="36" y="40" width="72" height="72" rx="6" fill="none" stroke="#8C7B6B" stroke-width="1.4" stroke-dasharray="4 4"/>`);
+  if (kind === "edge_bad") return w(`<path d="M24 34c24-14 48 16 96-6-10 30 14 60-6 96-30-14-60 14-92-4 12-28-12-56 2-86z" fill="#E6DAC7" stroke="#8C7B6B" stroke-width="1.8"/>`);
+  if (kind === "sym_good") return w(`<path d="M72 78L30 46c-8 16-8 48 0 64l42-32z" fill="#EBB7BE" stroke="#A66B74" stroke-width="1.6" stroke-linejoin="round"/><path d="M72 78l42-32c8 16 8 48 0 64L72 78z" fill="#EBB7BE" stroke="#A66B74" stroke-width="1.6" stroke-linejoin="round"/><rect x="64" y="66" width="16" height="24" rx="6" fill="#D48C96" stroke="#A66B74" stroke-width="1.6"/>`);
+  if (kind === "sym_bad") return w(`<path d="M72 78L24 38c-10 24-4 58 6 76l42-36z" fill="#EBB7BE" stroke="#A66B74" stroke-width="1.6" stroke-linejoin="round"/><path d="M72 78l26-14c4 10 4 22 0 30L72 78z" fill="#EBB7BE" stroke="#A66B74" stroke-width="1.6" stroke-linejoin="round"/><rect x="64" y="66" width="16" height="24" rx="6" fill="#D48C96" stroke="#A66B74" stroke-width="1.6"/>`);
+  if (kind === "clean_good") return w(`<circle cx="72" cy="78" r="42" fill="#FAF8F3" stroke="#8C7B6B" stroke-width="1.8"/><circle cx="58" cy="74" r="3.5" fill="#1D2B4A"/><circle cx="86" cy="74" r="3.5" fill="#1D2B4A"/><path d="M66 86q6 5 12 0" stroke="#7A4C2C" stroke-width="2" stroke-linecap="round" fill="none"/>`);
+  return w(`<circle cx="72" cy="78" r="42" fill="#EFE7DC" stroke="#8C7B6B" stroke-width="1.8"/><circle cx="58" cy="74" r="3.5" fill="#1D2B4A"/><circle cx="86" cy="74" r="3.5" fill="#1D2B4A"/><circle cx="58" cy="74" r="9" fill="#CBD5E1" fill-opacity="0.55"/><circle cx="86" cy="74" r="8" fill="#CBD5E1" fill-opacity="0.55"/><g stroke="#94A3B8" stroke-width="1.4" stroke-linecap="round"><path d="M30 62l-8-4M34 94l-9 5M114 66l9-5M110 98l8 6M68 36l-3-9M82 37l4-8M52 54l6 4M90 98l7-4M48 92l5-6"/></g>`);
+}
+
+function welcomeArtSvg() {
+  return `<svg width="316" height="164" viewBox="0 0 316 164" fill="none" aria-hidden="true">
+    <rect x="18" y="14" width="280" height="136" rx="12" fill="var(--bg)" stroke="var(--line)"/>
+    <line x1="18" y1="122" x2="298" y2="122" stroke="var(--line-strong)" stroke-width="1"/>
+    <circle cx="92" cy="96" r="25" fill="var(--brand-soft)" stroke="var(--brand)" stroke-width="1.6"/>
+    <path d="M71 89c13-6 28-6 42 0M68 99c14-3 30-2 46 3M79 116c10-9 20-17 26-33" stroke="var(--brand)" stroke-opacity="0.55" stroke-width="1.4" stroke-linecap="round"/>
+    <path d="M64 52l64 64" stroke="#6E5849" stroke-width="3.5" stroke-linecap="round"/>
+    <path d="M142 86c0-30 60-30 60 0z" fill="#B85542" stroke="#7A3124" stroke-width="1.6"/>
+    <circle cx="160" cy="70" r="4" fill="#FFF" fill-opacity="0.92"/><circle cx="182" cy="68" r="3.2" fill="#FFF" fill-opacity="0.92"/>
+    <rect x="158" y="86" width="28" height="34" rx="9" fill="#F4EDE2" stroke="#8C7B6B" stroke-width="1.6"/>
+    <rect x="218" y="60" width="60" height="60" rx="8" fill="var(--card)" stroke="var(--line-strong)" stroke-width="1.4"/>
+    <circle cx="248" cy="80" r="9.5" fill="var(--ok-soft)" stroke="var(--ok)" stroke-width="1.4"/>
+    <path d="M244 80l2.6 2.6 4.8-5" stroke="var(--ok)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+    <line x1="230" y1="99" x2="266" y2="99" stroke="var(--brand)" stroke-width="2" stroke-linecap="round"/>
+    <line x1="235" y1="108" x2="261" y2="108" stroke="var(--stitch)" stroke-width="1.6" stroke-linecap="round"/>
+  </svg>`;
+}
+
+function sampleArtSvg(kind) {
+  if (kind === "mushroom_keychain") {
+    return `<svg width="260" height="120" viewBox="0 0 260 118" fill="none" aria-hidden="true">
+      <circle cx="130" cy="18" r="7" stroke="#8590A6" stroke-width="1.8"/><line x1="130" y1="25" x2="130" y2="38" stroke="#8590A6" stroke-width="1.8"/>
+      <path d="M96 68c0-32 68-32 68 0z" fill="#B85542" stroke="#7A3124" stroke-width="1.6"/>
+      <circle cx="116" cy="52" r="4.5" fill="#FFF"/><circle cx="141" cy="49" r="3.5" fill="#FFF"/>
+      <rect x="115" y="68" width="30" height="32" rx="10" fill="#F4EDE2" stroke="#8C7B6B" stroke-width="1.6"/>
+      <line x1="70" y1="38" x2="70" y2="100" stroke="var(--stitch)" stroke-width="1.3" stroke-dasharray="3 3"/><text x="58" y="73" text-anchor="end" font-size="12" fill="var(--ink-sub)">6厘米</text>
+    </svg>`;
+  }
+  if (kind === "bear_doll") {
+    return `<svg width="260" height="120" viewBox="0 0 260 118" fill="none" aria-hidden="true">
+      <circle cx="109" cy="27" r="9" fill="#B47449" stroke="#7A4C2C" stroke-width="1.5"/><circle cx="151" cy="27" r="9" fill="#B47449" stroke="#7A4C2C" stroke-width="1.5"/>
+      <circle cx="130" cy="44" r="22" fill="#C98A5B" stroke="#7A4C2C" stroke-width="1.6"/><ellipse cx="130" cy="49" rx="9" ry="7" fill="#F4EDE2"/>
+      <circle cx="122" cy="41" r="2" fill="#1D2B4A"/><circle cx="138" cy="41" r="2" fill="#1D2B4A"/>
+      <rect x="111" y="64" width="38" height="36" rx="14" fill="#293B63" stroke="#1D2B4A" stroke-width="1.6"/>
+      <line x1="70" y1="20" x2="70" y2="102" stroke="var(--stitch)" stroke-width="1.3" stroke-dasharray="3 3"/><text x="58" y="64" text-anchor="end" font-size="12" fill="var(--ink-sub)">12厘米</text>
+    </svg>`;
+  }
+  return `<svg width="260" height="120" viewBox="0 0 260 118" fill="none" aria-hidden="true">
+    <path d="M104 34c4-18 48-18 52 0z" fill="#7B9C87" stroke="#466350" stroke-width="1.5"/>
+    <circle cx="130" cy="44" r="18" fill="#F4EDE2" stroke="#8C7B6B" stroke-width="1.5"/>
+    <circle cx="123" cy="43" r="1.8" fill="#1D2B4A"/><circle cx="137" cy="43" r="1.8" fill="#1D2B4A"/>
+    <path d="M110 62h40l9 38h-58l9-38z" fill="#EBB7BE" stroke="#A66B74" stroke-width="1.5" stroke-linejoin="round"/>
+    <line x1="68" y1="18" x2="68" y2="110" stroke="var(--stitch)" stroke-width="1.3" stroke-dasharray="3 3"/><text x="56" y="68" text-anchor="end" font-size="12" fill="var(--ink-sub)">22厘米</text>
+  </svg>`;
+}
+
+function svgGuide(kind, ok) {
+  if (kind === "proof") {
+    return ok
+      ? `<svg class="guide-svg" viewBox="0 0 160 106" aria-hidden="true"><rect width="160" height="106" fill="#F9FAFB"/><rect x="34" y="14" width="92" height="78" rx="8" fill="#FFF" stroke="var(--ok)" stroke-width="1.5"/><rect x="44" y="26" width="52" height="12" rx="4" fill="var(--ok-soft)"/><rect x="64" y="46" width="52" height="12" rx="4" fill="var(--brand-soft)"/><text x="80" y="78" text-anchor="middle" font-size="12" font-weight="600" fill="var(--ok)">接单 / 收款记录</text></svg>`
+      : `<svg class="guide-svg" viewBox="0 0 160 106" aria-hidden="true"><rect width="160" height="106" fill="#F9FAFB"/><rect x="34" y="14" width="92" height="78" rx="8" fill="#F1F5F9" stroke="var(--bad)" stroke-width="1.5"/><line x1="48" y1="36" x2="112" y2="72" stroke="var(--bad)" stroke-width="2"/><text x="80" y="60" text-anchor="middle" font-size="12" fill="var(--ink-sub)">看不清 / 网上找的图</text></svg>`;
+  }
+  if (kind === "p_note_front") {
+    return ok
+      ? `<svg class="guide-svg" viewBox="0 0 160 106" aria-hidden="true"><rect width="160" height="106" fill="#F9FAFB"/><circle cx="52" cy="46" r="15" fill="#EFE2D2" stroke="#786452" stroke-width="1.5"/><ellipse cx="52" cy="72" rx="15" ry="12" fill="#B85542" stroke="#7A3124" stroke-width="1.5"/><rect x="82" y="34" width="60" height="44" rx="4" fill="#FFF" stroke="var(--ok)" stroke-width="1.5"/><text x="112" y="54" text-anchor="middle" font-size="12" font-weight="600" fill="var(--ok)">${todayLabel()}</text><line x1="92" y1="65" x2="132" y2="65" stroke="var(--stitch)" stroke-width="1.4"/></svg>`
+      : `<svg class="guide-svg" viewBox="0 0 160 106" aria-hidden="true"><rect width="160" height="106" fill="#C9A25F"/><circle cx="80" cy="48" r="15" fill="#9E7638" opacity="0.7"/><ellipse cx="80" cy="74" rx="15" ry="12" fill="#854A27" opacity="0.7"/><text x="80" y="96" text-anchor="middle" font-size="11" fill="#FFF">没放写日期的纸条</text></svg>`;
+  }
+  if (kind === "p_stitch") {
+    return ok
+      ? `<svg class="guide-svg" viewBox="0 0 160 106" aria-hidden="true"><rect width="160" height="106" fill="#F9FAFB"/><rect x="20" y="19" width="120" height="68" rx="10" fill="#F2E7D8" stroke="var(--ok)" stroke-width="1.5"/><g stroke="#7C624A" stroke-width="1.8" stroke-linecap="round"><path d="M34 37l9 9m0-9l-9 9M56 37l9 9m0-9l-9 9M78 37l9 9m0-9l-9 9M100 37l9 9m0-9l-9 9M118 37l9 9m0-9l-9 9"/><path d="M34 59l9 9m0-9l-9 9M56 59l9 9m0-9l-9 9M78 59l9 9m0-9l-9 9M100 59l9 9m0-9l-9 9M118 59l9 9m0-9l-9 9"/></g></svg>`
+      : `<svg class="guide-svg" viewBox="0 0 160 106" aria-hidden="true"><rect width="160" height="106" fill="#F9FAFB"/><rect x="20" y="19" width="120" height="68" rx="10" fill="#EADBC8" stroke="var(--bad)" stroke-width="1.5"/><circle cx="56" cy="49" r="11" fill="#FFF" stroke="#A38466" stroke-width="1.4"/><circle cx="100" cy="45" r="10" fill="#FFF" stroke="#A38466" stroke-width="1.4"/><circle cx="80" cy="67" r="9" fill="#FFF" stroke="#A38466" stroke-width="1.4"/></svg>`;
+  }
+  if (kind === "back") {
+    return ok
+      ? `<svg class="guide-svg" viewBox="0 0 160 106" aria-hidden="true"><rect width="160" height="106" fill="#F9FAFB"/><ellipse cx="80" cy="53" rx="36" ry="29" fill="#B85542" stroke="#7A3124" stroke-width="1.5"/><rect x="46" y="53" width="68" height="27" rx="12" fill="#F4EDE2" stroke="#8C7B6B" stroke-width="1.4"/><line x1="48" y1="54" x2="112" y2="54" stroke="var(--ok)" stroke-width="2"/></svg>`
+      : `<svg class="guide-svg" viewBox="0 0 160 106" aria-hidden="true"><rect width="160" height="106" fill="#F9FAFB"/><ellipse cx="80" cy="53" rx="36" ry="29" fill="#B85542" stroke="#7A3124" stroke-width="1.5"/><path d="M46 53h68v22q-34 9-68 0z" fill="#F4EDE2" stroke="#8C7B6B" stroke-width="1.4"/><path d="M84 55c20-8 34 10 52-12" fill="none" stroke="#7A3124" stroke-width="2.4" stroke-linecap="round"/><circle cx="84" cy="55" r="4.5" fill="var(--bad)"/></svg>`;
+  }
+  if (kind === "t_front") {
+    return ok
+      ? `<svg class="guide-svg" viewBox="0 0 160 106" aria-hidden="true"><rect width="160" height="106" fill="#F9FAFB"/><rect x="18" y="15" width="124" height="76" rx="6" fill="#FFF" stroke="#CBD5E1" stroke-width="1.4"/><line x1="26" y1="81" x2="134" y2="81" stroke="#334155" stroke-width="1.5"/><path d="M32 81v-6M56 81v-6M80 81v-6M104 81v-6M128 81v-6" stroke="#334155" stroke-width="1.4"/><path d="M52 51c0-24 56-24 56 0z" fill="#B85542"/><rect x="67" y="51" width="26" height="22" rx="8" fill="#F4EDE2" stroke="#8C7B6B" stroke-width="1.2"/></svg>`
+      : `<svg class="guide-svg" viewBox="0 0 160 106" aria-hidden="true"><rect width="160" height="106" fill="#C9A25F"/><g transform="translate(8,6) rotate(-16 80 53)"><path d="M54 51c0-22 52-22 52 0z" fill="#8C4227"/><rect x="68" y="51" width="24" height="20" rx="7" fill="#C2A370"/></g></svg>`;
+  }
+  return ok
+    ? `<svg class="guide-svg" viewBox="0 0 160 106" aria-hidden="true"><rect width="160" height="106" fill="#F9FAFB"/><path d="M50 53c0-28 60-28 60 0z" fill="#B85542"/><rect x="66" y="53" width="28" height="24" rx="9" fill="#F4EDE2" stroke="#8C7B6B" stroke-width="1.3"/><path d="M26 45h18m-4-4l4 4-4 4M134 45h-18m4-4l-4 4 4 4" stroke="var(--ok)" stroke-width="1.8" fill="none" stroke-linecap="round"/></svg>`
+    : `<svg class="guide-svg" viewBox="0 0 160 106" aria-hidden="true"><rect width="160" height="106" fill="#F9FAFB"/><path d="M48 55c9-14 23-3 34-15 11 14 21 3 32 15z" fill="#B85542"/><path d="M68 55l-5 24 34-2-6-22z" fill="#F4EDE2" stroke="#8C7B6B" stroke-width="1.3"/></svg>`;
+}
+
+function mushroomStageSvg(idx) {
+  const capDone = idx >= 2; const stemDone = idx >= 3;
+  return `<svg width="42" height="42" viewBox="0 0 56 56" fill="none" aria-hidden="true" style="flex-shrink:0;">
+    <path d="M10 30c0-20 36-20 36 0z" fill="${capDone ? "#B85542" : "var(--brand-soft)"}" stroke="${capDone ? "#7A3124" : "var(--brand)"}" stroke-width="1.6"/>
+    ${capDone ? `<circle cx="22" cy="20" r="2.5" fill="#FFF"/><circle cx="34" cy="19" r="2" fill="#FFF"/>` : ""}
+    <rect x="19" y="30" width="18" height="18" rx="6" fill="${stemDone ? "#F4EDE2" : "var(--bg)"}" stroke="${stemDone ? "#8C7B6B" : "var(--stitch)"}" stroke-width="1.5"/>
+  </svg>`;
+}
+
+function calmBadgeSvg(done = false) {
+  if (done) return `<div class="badge-pop" aria-hidden="true"><svg width="56" height="56" viewBox="0 0 56 56" fill="none"><circle cx="28" cy="28" r="26" fill="var(--ok-soft)" stroke="var(--ok-line)" stroke-width="1.5"/><circle cx="28" cy="28" r="19" fill="var(--ok)"/><path d="M20 28.5l5.2 5.2L36.5 22.5" stroke="#FFFFFF" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>`;
+  return `<div class="badge-pop" aria-hidden="true"><svg width="56" height="56" viewBox="0 0 56 56" fill="none"><circle cx="28" cy="28" r="26" fill="var(--brand-soft)" stroke="var(--brand-line)" stroke-width="1.5"/><circle cx="28" cy="28" r="19" fill="var(--brand)"/><path d="M28 19v9l6 3.5" stroke="#FFFFFF" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></div>`;
+}
+
+/* ===== Hidden Evaluation Engine ===== */
+function evaluateHiddenCriteria() {
+  const tags = [];
+  let aesHit = 0;
+  AESTHETIC_10.forEach((q, i) => {
+    const a = state.aesAns[i];
+    const st = a === undefined ? "pending" : a === q.ans ? "pass" : "miss";
+    if (st === "pass") aesHit++;
+    tags.push({ key: q.key, label: q.tag, status: st });
+  });
+
+  let bonus = 0;
+  let patBaseHit = 0, patAbbrHit = false, patEnHit = false;
+  PATTERN_QUIZ_4.forEach((q, idx) => {
+    const a = state.patAns[idx];
+    if (a === q.ans) {
+      if (q.kind === "base") { patBaseHit++; bonus += 3; }
+      else if (q.kind === "bonus_abbr") { patAbbrHit = true; bonus += 4; }
+      else if (q.kind === "bonus_en") { patEnHit = true; bonus += 6; }
+    }
+  });
+  if (state.crochetYears === "7_plus") bonus += 6;
+  else if (state.crochetYears === "4_6") bonus += 5;
+  else if (state.crochetYears === "2_3") bonus += 3;
+  else if (state.crochetYears === "lt_1") bonus += 1;
+  if (state.mainCategory === "doll") bonus += 4;
+  if (state.patternHabit === "text" || state.patternHabit === "symbol") bonus += 2;
+  if (state.hasExperience === true) bonus += 6;
+  if (state.dailyHours === "high") bonus += 8;
+  else if (state.dailyHours === "mid") bonus += 5;
+  else if (state.dailyHours === "low") bonus += 2;
+  if (state.orderProofUploaded) bonus += 4;
+  if (state.pPhotos.every(Boolean)) bonus += 6;
+
+  let wageDiffSum = 0, wageCount = 0;
+  WAGE_QUESTIONS.forEach((q) => {
+    if (state.wageAns[q.idx] !== undefined) { wageCount++; wageDiffSum += state.wageAns[q.idx] - q.fairIdx; }
+  });
+  const yearsMap = { lt_1: "1年以内", "2_3": "2-3年", "4_6": "4-6年", "7_plus": "7年以上" };
+  const catMap = { doll: "玩偶挂件", bag: "包包帽子", flower: "花朵摆件", clothes: "衣服围巾" };
+  const habitMap = { text: "文字图解", symbol: "符号图解", video: "视频教程" };
+  const createMap = { follow: "照图钩", simple: "简单创作", more: "更多创作", complex: "复杂创作", any_shape: "有造型就能创" };
+  const drawMap = { none: "不会写", text: "写文字图解", symbol: "画符号图解", both: "文字+符号" };
+  const wageChannel = wageCount === 0 ? "未填工价" : wageDiffSum <= 1 ? "常规踏实工价" : "高客单精品预期";
+  tags.push({ key: "pat_base", label: `中符图解:${patBaseHit}/2`, status: patBaseHit === 2 ? "pass" : Object.keys(state.patAns).length ? "info" : "pending" });
+  if (patAbbrHit) tags.push({ key: "pat_abbr", label: "字母图解+分", status: "pass" });
+  if (patEnHit) tags.push({ key: "pat_en", label: "纯英文图解+分", status: "pass" });
+  tags.push({ key: "years", label: state.crochetYears ? `年限:${yearsMap[state.crochetYears]}` : "年限:未填", status: state.crochetYears ? "info" : "pending" });
+  if (state.mainCategory) tags.push({ key: "cat", label: `主攻:${catMap[state.mainCategory]}`, status: state.mainCategory === "doll" ? "pass" : "info" });
+  if (state.patternHabit) tags.push({ key: "habit", label: `习惯:${habitMap[state.patternHabit]}`, status: "info" });
+  if (state.createLevel) tags.push({ key: "creator", label: `创作:${createMap[state.createLevel]}`, status: (state.createLevel === "complex" || state.createLevel === "any_shape") ? "pass" : "info" });
+  if (state.drawPattern) tags.push({ key: "draw", label: `画图解:${drawMap[state.drawPattern]}`, status: state.drawPattern !== "none" ? "pass" : "info" });
+  tags.push({ key: "capacity", label: state.dailyHours === "high" ? "产能:充裕" : state.dailyHours === "mid" ? "产能:稳定" : state.dailyHours === "low" ? "产能:碎片" : "产能:未填", status: state.dailyHours ? "info" : "pending" });
+  tags.push({ key: "wage_channel", label: wageChannel, status: wageCount ? "info" : "pending" });
+
+  const totalScore = Math.min(100, aesHit * 7 + bonus);
+  let computedTier = "silent_out";
+  if (aesHit >= 9 && totalScore >= 82) computedTier = "priority";
+  else if (aesHit >= 7 && totalScore >= 60) computedTier = "reserve";
+
+  const activeTier = state.poolMode === "auto" ? computedTier : state.poolMode;
+  return { tags, aesHit, patBaseHit, patAbbrHit, patEnHit, totalScore, wageChannel, computedTier, activeTier };
+}
+
+function renderStageBar(meta, idx) {
+  const bar = document.getElementById("stageBar");
+  bar.setAttribute("aria-valuenow", String(idx + 1));
+  bar.innerHTML = [0, 1, 2, 3, 4].map((i) => {
+    const done = i < meta.macro;
+    const width = done ? 100 : i === meta.macro ? Math.round(meta.sub * 100) : 0;
+    return `<div class="stage-seg ${done ? "done" : ""}"><div class="stage-seg-fill" style="width:${width}%;"></div></div>`;
+  }).join("");
+}
+
+function renderPhotoScreen(opts) {
+  const done = opts.done;
+  return `
+    <div class="head-row">
+      <h1 class="h1">${opts.title}</h1>
+    </div>
+    <p class="lead">${opts.lead}</p>
+    <div class="guide-pair">
+      <div class="guide-box good">
+        <span class="guide-badge">${ICO.check(11)}<span>合格</span></span>
+        ${svgGuide(opts.guide, true)}
+      </div>
+      <div class="guide-box bad">
+        <span class="guide-badge">${ICO.cross(11)}<span>不合格</span></span>
+        ${svgGuide(opts.guide, false)}
+      </div>
+    </div>
+    <button id="photoUploadBtn" type="button" class="upload-area ${done ? "done" : ""}" onclick="${opts.onTap}">
+      <span class="upload-inner">
+        ${done ? `<span class="badge-pop" style="width:34px;height:34px;border-radius:50%;background:var(--ok);display:flex;align-items:center;justify-content:center;color:#FFF;">${ICO.check(18)}</span>` : ICO.camera}
+        <span class="upload-title">${done ? "已拍好，点这里可重拍" : opts.cta || "点这里拍照或选照片"}</span>
+      </span>
+    </button>
+  `;
+}
+
+function renderCalmWaitScreen(opts) {
+  const isSub = Boolean(state.subscribed[opts.waitKey]);
+  const lines = [opts.line1, opts.line2, opts.line3].filter(Boolean);
+  return `
+    <div class="center-block">
+      ${calmBadgeSvg(opts.signed || false)}
+      <h1 class="h1" style="margin-top:4px;">${opts.title}</h1>
+      ${opts.lead ? `<p class="lead" style="margin:0;">${opts.lead}</p>` : ""}
+      ${isSub ? `<span class="sub-pill">${ICO.check(12)}<span>已开启消息提醒</span></span>` : ""}
+      ${lines.length ? `
+        <div class="calm-card">
+          ${lines.map((txt, i) => `<div class="calm-line"><span class="calm-dot ${i === 0 || opts.signed ? "ok" : ""}"></span><span>${txt}</span></div>`).join("")}
+        </div>
+      ` : ""}
+    </div>
+    <button type="button" class="screen-cta ${isSub ? "" : "wx-cta"}" onclick="onWaitAction('${opts.waitKey}')">
+      ${isSub ? "查看进度" : `${ICO.wxBubble}<span>开启消息提醒</span>`}
+    </button>
+  `;
+}
+
+function syncUrlParams() {
+  try {
+    const u = new URL(window.location.href);
+    u.searchParams.set("s", state.view);
+    window.history.replaceState(null, "", u.toString());
+  } catch (_) {}
+}
+
+function applyDirectionAnim(dir) {
+  const scr = document.getElementById("screen");
+  scr.classList.remove("dir-fwd", "dir-back");
+  if (dir !== "fwd" && dir !== "back") return;
+  void scr.offsetWidth;
+  scr.classList.add(dir === "back" ? "dir-back" : "dir-fwd");
+}
+
+function render(animDir = "none") {
+  const idx = SCREENS.findIndex((s) => s.id === state.view);
+  const meta = SCREENS[idx >= 0 ? idx : 0];
+  renderStageBar(meta, idx >= 0 ? idx : 0);
+
+  /* Always show Back button on every page except homepage (welcome)! */
+  document.getElementById("btnBack").classList.toggle("hidden", state.view === "welcome");
+  document.getElementById("navTitle").textContent = state.view === "welcome" ? "无限天真" : "报名接单";
+
+  const screen = document.getElementById("screen");
+
+  if (state.view === "welcome") {
+    const allCollected = state.wxAgreed && Boolean(state.phone) && Boolean(state.weaverAddr);
+    screen.innerHTML = `
+      <div class="hero-art">${welcomeArtSvg()}</div>
+      <div class="head-row" style="margin-bottom:14px;"><h1 class="h1">在家钩织，按件算钱</h1></div>
+      <div class="pillar-group">
+        <div class="pillar-chip"><span class="pillar-ico">${ICO.coin}</span><span class="pillar-txt">按件算钱</span></div>
+        <div class="pillar-chip"><span class="pillar-ico">${ICO.yarn}</span><span class="pillar-txt">免费送线</span></div>
+        <div class="pillar-chip"><span class="pillar-ico">${ICO.refund}</span><span class="pillar-txt">押金可退</span></div>
+      </div>
+      <button type="button" class="screen-cta wx-cta" onclick="startHomepageWxCollection()">
+        ${ICO.wxBubble}<span>${allCollected ? "继续填写" : "微信一键登录"}</span>
+      </button>
+    `;
+  } else if (state.view === "phone_fallback") {
+    const ok = state.phone.trim().length >= 11;
+    screen.innerHTML = `
+      <div class="head-row" style="margin-bottom:14px;"><h1 class="h1">填写手机号</h1></div>
+      <button type="button" class="action-card" onclick="openWxSheet('wxPhoneSheet')">
+        <span class="action-ico">${ICO.phone}</span>
+        <span style="font-size:var(--font-body);font-weight:500;">使用微信手机号</span>
+      </button>
+      <div>
+        <label class="field-lbl" for="phoneInput">或手填 11 位手机号</label>
+        <input id="phoneInput" class="big-input" type="tel" inputmode="numeric" maxlength="11" placeholder="输入 11 位手机号" value="${state.phone}" oninput="onPhoneInput(this.value)" />
+      </div>
+      <button id="submitPhoneBtn" type="button" class="screen-cta ${ok ? "" : "muted-cta"}" onclick="submitManualPhone()">确认</button>
+    `;
+  } else if (state.view === "addr_fallback") {
+    const ok = state.weaverAddr.trim().length >= 2;
+    screen.innerHTML = `
+      <div class="head-row" style="margin-bottom:14px;"><h1 class="h1">填写收货地址</h1></div>
+      <button type="button" class="action-card" onclick="openWxSheet('wxAddrSheet')">
+        <span class="action-ico">${ICO.pin}</span>
+        <span style="font-size:var(--font-body);font-weight:500;">选择微信收货地址</span>
+      </button>
+      <div>
+        <label class="field-lbl" for="weaverAddrInput">或手写收货地址</label>
+        <input id="weaverAddrInput" class="big-input" type="text" placeholder="例：河南省洛阳市孟津区朝阳镇..." value="${state.weaverAddr}" oninput="onWeaverAddr(this.value)" />
+      </div>
+      <button id="submitAddrBtn" type="button" class="screen-cta ${ok ? "" : "muted-cta"}" onclick="submitManualAddr()">确认地址</button>
+    `;
+  } else if (state.view === "deposit_notice") {
+    screen.innerHTML = `
+      <div class="head-row"><h1 class="h1">开始接单前要交 200 元押金</h1></div>
+      <div class="cell-group" style="margin-top:8px;margin-bottom:14px;">
+        <div class="cell-row"><span class="cell-ico">${ICO.yarn}</span><div class="cell-body"><div class="cell-main">现在不用交钱</div></div></div>
+        <div class="cell-row"><span class="cell-ico">${ICO.shield}</span><div class="cell-body"><div class="cell-main">押的是免费毛线</div><div class="cell-desc">交完就免费寄 12 团毛线</div></div></div>
+        <div class="cell-row"><span class="cell-ico">${ICO.refund}</span><div class="cell-body"><div class="cell-main">不做可随时全退</div><div class="cell-desc">手里的单做完，200 元原路退回</div></div></div>
+      </div>
+      <button type="button" class="choice-card ${state.depositAccepted ? "selected" : ""}" style="margin-top:auto;" onclick="acceptDepositAndGo()">
+        <span style="font-size:var(--font-body);font-weight:600;color:var(--brand-dark);">可以接受，去报名</span>
+        <span style="color:var(--brand);display:inline-flex;">${ICO.chevron}</span>
+      </button>
+    `;
+  } else if (state.view === "aes") {
+    const q = AESTHETIC_10[state.aesIdx];
+    const picked = state.aesAns[state.aesIdx];
+    const dots = AESTHETIC_10.map((_, i) => `<span class="s-dot ${i === state.aesIdx ? "cur" : state.aesAns[i] !== undefined ? "done" : ""}"></span>`).join("");
+    screen.innerHTML = `
+      <div class="step-meta">
+        <div class="step-dots" aria-hidden="true">${dots}</div>
+        <span>第 ${state.aesIdx + 1} / 10 题</span>
+      </div>
+      <div class="head-row" style="margin-bottom:14px;"><h1 class="h1">${q.title}</h1></div>
+      <div id="aesGrid" class="aes-grid" role="radiogroup" aria-label="${q.title}">
+        <button type="button" role="radio" aria-checked="${picked === 0}" aria-label="选左边" class="aes-card ${picked === 0 ? "selected" : ""}" onclick="pickAes(0)">
+          <span class="aes-art">${aesArtSvg(q.artA)}</span>
+          <span class="aes-foot" style="justify-content:center;">${radioHtml()}</span>
+        </button>
+        <button type="button" role="radio" aria-checked="${picked === 1}" aria-label="选右边" class="aes-card ${picked === 1 ? "selected" : ""}" onclick="pickAes(1)">
+          <span class="aes-art">${aesArtSvg(q.artB)}</span>
+          <span class="aes-foot" style="justify-content:center;">${radioHtml()}</span>
+        </button>
+      </div>
+    `;
+  } else if (state.view === "pattern_quiz") {
+    const q = PATTERN_QUIZ_4[state.patIdx];
+    const picked = state.patAns[state.patIdx];
+    const dots = PATTERN_QUIZ_4.map((_, i) => `<span class="s-dot ${i === state.patIdx ? "cur" : state.patAns[i] !== undefined ? "done" : ""}"></span>`).join("");
+    const visual = q.cardSvg === "sym_inc"
+      ? `<div style="background:var(--card);border:1px solid var(--line);border-radius:var(--radius-card);box-shadow:var(--card-shadow);padding:20px 16px;margin-bottom:14px;display:flex;align-items:center;justify-content:center;">
+          <svg width="120" height="84" viewBox="0 0 120 84" fill="none" aria-hidden="true">
+            <path d="M36 16L60 66L84 16" stroke="var(--brand)" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <line x1="28" y1="68" x2="92" y2="68" stroke="var(--stitch)" stroke-width="1.5" stroke-dasharray="4 4"/>
+          </svg>
+        </div>`
+      : `<div style="background:var(--card);border:1px solid var(--line);border-radius:var(--radius-card);box-shadow:var(--card-shadow);padding:22px 16px;margin-bottom:14px;text-align:center;">
+          <div style="font-size:20px;font-weight:600;color:var(--brand-dark);letter-spacing:0.3px;font-variant-numeric:tabular-nums;">${q.cardText}</div>
+        </div>`;
+    screen.innerHTML = `
+      <div class="step-meta">
+        <div class="step-dots" style="max-width:140px;" aria-hidden="true">${dots}</div>
+        <span>第 ${state.patIdx + 1} / 4 题</span>
+      </div>
+      <div class="head-row" style="margin-bottom:12px;"><h1 class="h1">${q.title}</h1></div>
+      ${visual}
+      <div class="stack" style="gap:9px;" role="radiogroup" aria-label="${q.title}">
+        ${q.opts.map((txt, oIdx) => {
+          const sel = picked === oIdx;
+          return `<button type="button" role="radio" aria-checked="${sel}" class="choice-card ${sel ? "selected" : ""}" style="padding:13px 16px;min-height:52px;" onclick="pickPat(${oIdx})">
+            <span style="font-size:var(--font-body);font-weight:500;font-variant-numeric:tabular-nums;">${txt}</span>
+            ${radioHtml()}
+          </button>`;
+        }).join("")}
+      </div>
+    `;
+  } else if (state.view === "crochet_years") {
+    const opts = [
+      { id: "lt_1",   t: "一年以内" },
+      { id: "2_3",    t: "2-3 年" },
+      { id: "4_6",    t: "4-6 年" },
+      { id: "7_plus", t: "7 年以上" }
+    ];
+    screen.innerHTML = `
+      <div class="head-row"><h1 class="h1">你钩织多久了？</h1></div>
+      <div class="stack" style="margin-top:12px;" role="radiogroup" aria-label="你钩织多久了">
+        ${opts.map((o) => {
+          const sel = state.crochetYears === o.id;
+          return `<button type="button" role="radio" aria-checked="${sel}" class="choice-card ${sel ? "selected" : ""}" onclick="pickYears('${o.id}')">
+            <span class="choice-left"><span class="choice-art">${ICO.yarn}</span><span style="font-size:var(--font-body);font-weight:600;font-variant-numeric:tabular-nums;">${o.t}</span></span>
+            ${radioHtml()}
+          </button>`;
+        }).join("")}
+      </div>
+    `;
+  } else if (state.view === "main_category") {
+    const opts = [
+      { id: "doll",    t: "小玩偶 / 挂件" },
+      { id: "bag",     t: "包包 / 帽子" },
+      { id: "flower",  t: "花朵 / 摆件" },
+      { id: "clothes", t: "衣服 / 围巾" }
+    ];
+    screen.innerHTML = `
+      <div class="head-row"><h1 class="h1">平时最常钩哪一类？</h1></div>
+      <div class="stack" style="margin-top:12px;" role="radiogroup" aria-label="平时最常钩哪一类">
+        ${opts.map((o) => {
+          const sel = state.mainCategory === o.id;
+          return `<button type="button" role="radio" aria-checked="${sel}" class="choice-card ${sel ? "selected" : ""}" onclick="pickCategory('${o.id}')">
+            <span style="font-size:var(--font-body);font-weight:600;">${o.t}</span>
+            ${radioHtml()}
+          </button>`;
+        }).join("")}
+      </div>
+    `;
+  } else if (state.view === "pattern_habit") {
+    const opts = [
+      { id: "text",   t: "文字图解" },
+      { id: "symbol", t: "符号图解" },
+      { id: "video",  t: "视频教程" }
+    ];
+    screen.innerHTML = `
+      <div class="head-row"><h1 class="h1">平时看哪种图解多？</h1></div>
+      <div class="stack" style="margin-top:12px;" role="radiogroup" aria-label="平时看哪种图解多">
+        ${opts.map((o) => {
+          const sel = state.patternHabit === o.id;
+          return `<button type="button" role="radio" aria-checked="${sel}" class="choice-card ${sel ? "selected" : ""}" onclick="pickPatternHabit('${o.id}')">
+            <span style="font-size:var(--font-body);font-weight:600;">${o.t}</span>
+            ${radioHtml()}
+          </button>`;
+        }).join("")}
+      </div>
+    `;
+  } else if (state.view === "can_create") {
+    const opts = [
+      { id: "follow",    t: "照着图解钩" },
+      { id: "simple",    t: "会简单创作" },
+      { id: "more",      t: "会更多创作" },
+      { id: "complex",   t: "会复杂创作" },
+      { id: "any_shape", t: "只要有造型就会创作" }
+    ];
+    screen.innerHTML = `
+      <div class="head-row"><h1 class="h1">平时会自己创作吗？</h1></div>
+      <div class="stack" style="margin-top:10px;gap:8px;" role="radiogroup" aria-label="平时会自己创作吗">
+        ${opts.map((o) => {
+          const sel = state.createLevel === o.id;
+          return `<button type="button" role="radio" aria-checked="${sel}" class="choice-card ${sel ? "selected" : ""}" style="padding:12px 16px;min-height:52px;" onclick="pickCreateLevel('${o.id}')">
+            <span style="font-size:var(--font-body);font-weight:500;">${o.t}</span>
+            ${radioHtml()}
+          </button>`;
+        }).join("")}
+      </div>
+    `;
+  } else if (state.view === "can_draw_pattern") {
+    const opts = [
+      { id: "none",   t: "不会写图解" },
+      { id: "text",   t: "会写文字图解" },
+      { id: "symbol", t: "会画符号图解" },
+      { id: "both",   t: "文字和符号都会" }
+    ];
+    screen.innerHTML = `
+      <div class="head-row"><h1 class="h1">会画图解或写图解吗？</h1></div>
+      <div class="stack" style="margin-top:12px;" role="radiogroup" aria-label="会画图解或写图解吗">
+        ${opts.map((o) => {
+          const sel = state.drawPattern === o.id;
+          return `<button type="button" role="radio" aria-checked="${sel}" class="choice-card ${sel ? "selected" : ""}" onclick="pickDrawPattern('${o.id}')">
+            <span style="font-size:var(--font-body);font-weight:600;">${o.t}</span>
+            ${radioHtml()}
+          </button>`;
+        }).join("")}
+      </div>
+    `;
+  } else if (state.view === "experience") {
+    screen.innerHTML = `
+      <div class="head-row"><h1 class="h1">以前接过钩织单吗？</h1></div>
+      <div class="stack" style="margin-top:12px;" role="radiogroup" aria-label="以前接过钩织单吗">
+        <button type="button" role="radio" aria-checked="${state.hasExperience === true}" class="choice-card ${state.hasExperience === true ? "selected" : ""}" onclick="pickExp(true)">
+          <span class="choice-left"><span class="choice-art">${ICO.receipt}</span><span style="font-size:var(--font-body);font-weight:600;">接过单</span></span>
+          ${radioHtml()}
+        </button>
+        <button type="button" role="radio" aria-checked="${state.hasExperience === false}" class="choice-card ${state.hasExperience === false ? "selected" : ""}" onclick="pickExp(false)">
+          <span class="choice-left"><span class="choice-art">${ICO.spark}</span><span style="font-size:var(--font-body);font-weight:600;">没接过单</span></span>
+          ${radioHtml()}
+        </button>
+      </div>
+    `;
+  } else if (state.view === "daily_time") {
+    const opts = [
+      { id: "low",  t: "每天 1–2 小时" },
+      { id: "mid",  t: "每天 3–4 小时" },
+      { id: "high", t: "每天半天以上" }
+    ];
+    screen.innerHTML = `
+      <div class="head-row"><h1 class="h1">每天能空出多久钩织？</h1></div>
+      <div class="stack" style="margin-top:12px;" role="radiogroup" aria-label="每天可钩织时间">
+        ${opts.map((o) => {
+          const sel = state.dailyHours === o.id;
+          return `<button type="button" role="radio" aria-checked="${sel}" class="choice-card ${sel ? "selected" : ""}" onclick="pickTime('${o.id}')">
+            <span class="choice-left"><span class="choice-art">${ICO.clock}</span><span style="font-size:var(--font-body);font-weight:600;">${o.t}</span></span>
+            ${radioHtml()}
+          </button>`;
+        }).join("")}
+      </div>
+    `;
+  } else if (state.view === "wage") {
+    const q = WAGE_QUESTIONS[state.wageIdx];
+    const picked = state.wageAns[q.idx];
+    const dots = WAGE_QUESTIONS.map((_, i) => `<span class="s-dot ${i === q.idx ? "cur" : state.wageAns[i] !== undefined ? "done" : ""}"></span>`).join("");
+    screen.innerHTML = `
+      <div class="step-meta">
+        <div class="step-dots" style="max-width:120px;" aria-hidden="true">${dots}</div>
+        <span>第 ${q.idx + 1} / 3 件</span>
+      </div>
+      <div class="head-row"><h1 class="h1">这件你觉得手工费多少合适？</h1></div>
+      <p class="lead" style="margin-bottom:10px;">只算你的手工费</p>
+      <div class="sample-card">
+        <div class="sample-art">${sampleArtSvg(q.art)}<span class="sample-badge">${q.spec}</span></div>
+        <div class="sample-bar"><span class="sample-name">${q.name}</span></div>
+      </div>
+      <div class="grid-2" role="radiogroup" aria-label="选择手工费">
+        ${q.opts.map((txt, oIdx) => {
+          const sel = picked === oIdx;
+          return `<button type="button" role="radio" aria-checked="${sel}" class="price-opt ${sel ? "selected" : ""}" onclick="pickWage(${oIdx})">
+            <span>${txt}</span>
+            ${radioHtml()}
+          </button>`;
+        }).join("")}
+      </div>
+    `;
+  } else if (state.view === "order_proof") {
+    screen.innerHTML = renderPhotoScreen({
+      title: "发一张接单截图",
+      lead: "以前的聊天接单、订单或收款截图都可以",
+      guide: "proof",
+      cta: "点这里选截图",
+      done: state.orderProofUploaded,
+      onTap: "openWxMedia('order_proof', false, '选择接单截图')"
+    });
+  } else if (state.view === "p1") {
+    screen.innerHTML = renderPhotoScreen({
+      title: "拍作品正面（1/3）",
+      lead: `作品旁放张纸写「${todayLabel()}」，一起拍下来`,
+      guide: "p_note_front",
+      cta: "点这里直接拍照",
+      done: state.pPhotos[0],
+      onTap: "openWxMedia('p0', true, '请现场拍照')"
+    });
+  } else if (state.view === "p2") {
+    screen.innerHTML = renderPhotoScreen({
+      title: "拍针脚近照（2/3）",
+      lead: "凑近一点，拍清针眼松紧",
+      guide: "p_stitch",
+      done: state.pPhotos[1],
+      onTap: "openWxMedia('p1', false, '拍针脚近照')"
+    });
+  } else if (state.view === "p3") {
+    screen.innerHTML = renderPhotoScreen({
+      title: "拍背面收口（3/3）",
+      lead: "翻到背面，拍清收口和线头",
+      guide: "back",
+      done: state.pPhotos[2],
+      onTap: "openWxMedia('p2', false, '拍背面收口')"
+    });
+  } else if (state.view === "wait_1") {
+    screen.innerHTML = renderCalmWaitScreen({
+      waitKey: "wait_1",
+      title: "作品已收到",
+      lead: "通过后会发微信通知你下一步"
+    });
+  } else if (state.view === "test_guide") {
+    screen.innerHTML = `
+      <div class="head-row"><h1 class="h1">钩一只小蘑菇</h1></div>
+      <p class="lead">用家里的 4 股棉线钩（约 40 分钟）</p>
+      <div class="trial-visual">
+        ${mushroomStageSvg(state.stitchIdx)}
+        <div style="min-width:0;">
+          <div style="font-size:var(--font-sub);font-weight:600;color:var(--ink);">留好小蘑菇别拆</div>
+        </div>
+      </div>
+      <div class="stitch-list">
+        ${STITCHES.map((s, sIdx) => {
+          const isCur = state.stitchIdx === sIdx; const isDone = state.stitchIdx > sIdx;
+          return `<button type="button" class="stitch-row ${isCur ? "active" : isDone ? "done" : ""}" onclick="pickStitch(${sIdx})">
+            <span><span class="stitch-tag">${s.r}</span><span>${s.t}</span></span>
+            <span style="color:${isDone ? "var(--ok)" : "var(--brand)"};flex-shrink:0;">${isDone ? ICO.check(16) : isCur ? "正在钩" : ""}</span>
+          </button>`;
+        }).join("")}
+      </div>
+      <button type="button" class="screen-cta" onclick="jump('t1', 'fwd')">钩好了，去拍照</button>
+    `;
+  } else if (state.view === "t1") {
+    screen.innerHTML = renderPhotoScreen({ title: "拍小蘑菇正面（1/3）", lead: "放白纸上，旁边放把尺子一起拍", guide: "t_front", done: state.tPhotos[0], onTap: "openWxMedia('t0', false, '拍小蘑菇正面')" });
+  } else if (state.view === "t2") {
+    screen.innerHTML = renderPhotoScreen({ title: "拍小蘑菇背面（2/3）", lead: "拍清背面换色和收口有没有线头", guide: "back", done: state.tPhotos[1], onTap: "openWxMedia('t1', false, '拍小蘑菇背面')" });
+  } else if (state.view === "t3") {
+    screen.innerHTML = renderPhotoScreen({ title: "拍小蘑菇侧面（3/3）", lead: "用手轻捏侧面，拍圆不圆、鼓不鼓", guide: "t_side", done: state.tPhotos[2], onTap: "openWxMedia('t2', false, '拍小蘑菇侧面')" });
+  } else if (state.view === "wait_2") {
+    screen.innerHTML = renderCalmWaitScreen({
+      waitKey: "wait_2",
+      title: "照片已收到",
+      lead: "先收好小蘑菇，别拆也别丢",
+      line1: "看完发微信通知你预约上门取件"
+    });
+  } else if (state.view === "ship_addr") {
+    const slots = ["今天 14:00-16:00", "明天 09:00-11:00", "明天 14:00-16:00"];
+    const hasPickupAddr = Boolean(state.pickupAddr);
+    screen.innerHTML = `
+      <div class="head-row"><h1 class="h1">预约上门取件</h1></div>
+      <p class="lead">装好小蘑菇，运费当面付给快递员</p>
+      <button type="button" style="appearance:none;width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:0 16px;min-height:54px;margin-bottom:12px;border-radius:12px;cursor:pointer;font-family:inherit;font-weight:500;background:${hasPickupAddr ? "var(--card)" : "var(--wx-green)"};color:${hasPickupAddr ? "var(--ink)" : "#FFFFFF"};border:${hasPickupAddr ? "1.5px solid var(--brand)" : "none"};box-shadow:var(--card-shadow);" onclick="openWxSheet('wxAddrSheet')">
+        <span style="display:flex;align-items:center;gap:8px;min-width:0;text-align:left;">
+          <span style="flex:0 0 auto;color:${hasPickupAddr ? "var(--brand)" : "#FFFFFF"};display:inline-flex;">${ICO.pin}</span>
+          <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--font-sub);">${hasPickupAddr ? state.pickupAddr : "选择取件地址"}</span>
+        </span>
+        <span style="font-size:var(--font-desc);opacity:0.9;flex:0 0 auto;white-space:nowrap;">${hasPickupAddr ? "修改" : "›"}</span>
+      </button>
+      <div class="cell-group">
+        ${slots.map((sl) => `
+          <button type="button" class="cell-row ${state.pickupSlot === sl ? "selected" : ""}" style="appearance:none;width:100%;border:none;background:${state.pickupSlot === sl ? "var(--brand-soft)" : "transparent"};text-align:left;cursor:pointer;font-family:inherit;padding:13px 14px;" onclick="pickSlot('${sl}')">
+            <span class="cell-ico">${ICO.clock}</span>
+            <div class="cell-body"><div class="cell-main" style="font-size:var(--font-sub);font-variant-numeric:tabular-nums;">${sl}</div></div>
+            ${radioHtml()}
+          </button>
+        `).join("")}
+      </div>
+      <button type="button" class="screen-cta ${hasPickupAddr ? "" : "muted-cta"}" style="margin-top:auto;" onclick="confirmKd100Pickup()">立即预约</button>
+      <button type="button" style="background:none;border:none;color:var(--ink-mid);font-size:var(--font-desc);cursor:pointer;padding:2px 0;text-decoration:underline;" onclick="jump('ship_no', 'fwd')">快递不上门？自己去寄并填单号</button>
+    `;
+  } else if (state.view === "ship_no") {
+    const carrier = detectCarrier(state.trackingNo);
+    const hasNo = state.trackingNo.trim().length >= 6;
+    screen.innerHTML = `
+      <div class="head-row"><h1 class="h1">自己去寄，扫快递单</h1></div>
+      <p class="lead">装盒放张纸写 <strong style="font-variant-numeric:tabular-nums;">${state.weaverCode}</strong>，寄完扫一扫单号</p>
+      <button type="button" class="addr-copy-btn" style="padding:10px 12px;" onclick="copyAddr()">${ICO.copy}<span>一键复制收件地址</span></button>
+      <button type="button" class="action-card ${hasNo ? "done" : ""}" style="padding:16px 14px;" onclick="openWxScan()">
+        ${hasNo ? `<span class="badge-pop" style="width:32px;height:32px;border-radius:50%;background:var(--ok);display:flex;align-items:center;justify-content:center;color:#FFF;">${ICO.check(16)}</span>` : ICO.scan}
+        <span style="font-size:var(--font-body);font-weight:500;color:${hasNo ? "var(--ok)" : "var(--ink)"};">${hasNo ? `已扫好 · ${carrier || "快递单"}` : "扫一扫快递单"}</span>
+        ${hasNo ? `<span class="action-sub">${state.trackingNo}</span>` : ""}
+      </button>
+      <div>
+        <input id="trackInput" class="big-input" type="text" placeholder="扫不了就手填快递单号" value="${state.trackingNo}" oninput="onTrack(this.value)" />
+        <div id="carHint" style="min-height:18px;margin-top:4px;font-size:var(--font-desc);color:var(--ok);font-weight:500;">${carrier ? `${carrier}` : ""}</div>
+      </div>
+      <button id="submitTrackBtn" type="button" class="screen-cta ${hasNo ? "" : "muted-cta"}" onclick="submitManualTrack()">提交</button>
+    `;
+  } else if (state.view === "wait_3") {
+    const isKd100 = state.shipMode === "kd100_pickup";
+    screen.innerHTML = renderCalmWaitScreen({
+      waitKey: "wait_3",
+      signed: state.sampleSigned,
+      title: state.sampleSigned ? "小蘑菇已签收" : (isKd100 ? "已预约上门取件" : "快递单号已提交"),
+      lead: state.sampleSigned
+        ? "看完实物会发微信通知你"
+        : (isKd100 ? "请装好小蘑菇，等快递员上门" : "收到包裹后会发微信通知你"),
+      line1: state.sampleSigned
+        ? ""
+        : (isKd100 ? `上门时间：${state.pickupSlot}` : `快递单号：${state.trackingNo || "SF1234567890"}`),
+      line2: state.sampleSigned
+        ? ""
+        : (isKd100 ? "运费当面付给快递员" : "")
+    });
+  } else if (state.view === "deposit_pay") {
+    screen.innerHTML = `
+      <div class="center-block">
+        ${calmBadgeSvg(true)}
+        <h1 class="h1" style="margin-top:4px;">最后一步：交 200 元押金</h1>
+        <div class="big-num">¥200.00</div>
+        <div class="cell-group" style="width:100%;text-align:left;margin-top:6px;">
+          <div class="cell-row" style="padding:12px 14px;"><span class="cell-ico">${ICO.yarn}</span><div class="cell-body"><div class="cell-main" style="font-size:var(--font-sub);">交完就免费寄 12 团毛线</div></div></div>
+          <div class="cell-row" style="padding:12px 14px;"><span class="cell-ico">${ICO.refund}</span><div class="cell-body"><div class="cell-main" style="font-size:var(--font-sub);">手里的单做完，200 元原路退回</div></div></div>
+        </div>
+      </div>
+      <button type="button" class="screen-cta wx-cta" onclick="openWxSheet('wxPaySheet')">微信支付 ¥200.00</button>
+    `;
+  } else if (state.view === "approved") {
+    screen.innerHTML = `
+      <div class="head-row">
+        <h1 class="h1">已开通，可以开始接单啦</h1>
+      </div>
+      <p class="lead" style="margin-bottom:12px;">12 团免费毛线已安排寄出</p>
+      <div class="yarn-4x3">
+        ${YARNS_12.map((y) => `<div class="yarn-dot-card"><span class="yarn-ball" style="background:${y.c};" aria-hidden="true"></span><span>${y.n}</span></div>`).join("")}
+      </div>
+      <button type="button" class="screen-cta" onclick="showToast('欢迎开始接单')">去接单</button>
+    `;
+  }
+
+  applyDirectionAnim(animDir);
+  syncUrlParams();
+  renderReviewer();
+}
+
+function renderReviewer() {
+  const ev = evaluateHiddenCriteria();
+  const tierMeta = {
+    silent_out: { pill: "silent",   label: "未达线·静默不入库", desc: `审美命中 ${ev.aesHit}/10（隐藏及格线需>=7），静默不入库，前台永无失败提示。` },
+    reserve:    { pill: "reserve",  label: "过线·入织女储备库", desc: `审美命中 ${ev.aesHit}/10，已入织女储备库（渠道标签：${ev.wageChannel}），等后续渠道开放。` },
+    priority:   { pill: "priority", label: "高分优先·进测试库", desc: `审美命中 ${ev.aesHit}/10（>=9达优先线），放行进入钩织测试题与优先接单织女库！` }
+  }[ev.activeTier];
+
+  const badge = document.getElementById("poolBadge");
+  badge.className = `pool-pill ${tierMeta.pill}`;
+  badge.textContent = `${tierMeta.label} (${ev.totalScore}分)`;
+
+  document.getElementById("hiddenTagGrid").innerHTML = ev.tags.map((t) => {
+    const sym = t.status === "pass" ? "✓" : t.status === "miss" ? "×" : "";
+    return `<span class="h-tag ${t.status}">${sym ? sym + " " : ""}${t.label}</span>`;
+  }).join("");
+
+  document.getElementById("poolNote").textContent = tierMeta.desc;
+  document.getElementById("poolBtns").innerHTML = POOL_MODES.map((m) => `<button type="button" class="seg-btn ${state.poolMode === m.id ? "active" : ""}" onclick="setPoolMode('${m.id}')">${m.name}</button>`).join("");
+
+  document.getElementById("revList").innerHTML = SCREENS.map((s) => {
+    const skipped =
+      (s.id === "order_proof" && state.hasExperience === false) ||
+      (s.id === "phone_fallback" && !state.phoneDenied) ||
+      (s.id === "addr_fallback" && !state.locDenied) ||
+      (s.id === "ship_no" && state.shipMode === "kd100_pickup");
+    const extra = s.id === "aes" ? `第${state.aesIdx + 1}/10` : s.id === "pattern_quiz" ? `第${state.patIdx + 1}/4` : s.id === "wage" ? `第${state.wageIdx + 1}/3` : skipped ? "自动跳过" : s.stage;
+    return `<button type="button" class="rev-btn ${state.view === s.id ? "active" : ""} ${skipped ? "muted-skip" : ""}" onclick="jump('${s.id}', 'none')">
+      <span>${s.label}</span>
+      <span style="opacity:0.68;">${extra}</span>
+    </button>`;
+  }).join("");
+
+  document.getElementById("specJson").textContent = JSON.stringify({
+    version: "v5-kd100-pickup",
+    weaverCode: state.weaverCode,
+    homepageWxCollected: {
+      login: state.wxAgreed ? state.wxUserId : false,
+      phone: state.phone || null,
+      location: state.weaverAddr || null
+    },
+    kuaidi100Ship: {
+      mode: state.shipMode,
+      pickupAddr: state.pickupAddr || null,
+      pickupSlot: state.pickupSlot,
+      trackingNo: state.trackingNo || null,
+      paperNoteRequired: state.shipMode === "self_dropoff"
+    },
+    idCardVerification: "deferred_stage1_not_required",
+    aestheticPassed: `${ev.aesHit}/10`,
+    patternQuiz: { zhSymbolPassed: `${ev.patBaseHit}/2`, abbrBonus: ev.patAbbrHit, englishBonus: ev.patEnHit },
+    profile: {
+      crochetYears: state.crochetYears,
+      mainCategory: state.mainCategory,
+      patternHabit: state.patternHabit,
+      createLevel: state.createLevel,
+      drawPattern: state.drawPattern,
+      dailyHours: state.dailyHours
+    },
+    wageChannelTag: ev.wageChannel,
+    hiddenScore: ev.totalScore,
+    backendPoolTier: ev.activeTier,
+    weaverFailureNoticeShown: false
+  }, null, 2);
+}
+
+/* ===== Auto-Advance Selection Handlers + Universal Top-Left Back ===== */
+function acceptDepositAndGo() {
+  state.depositAccepted = true;
+  render("none");
+  scheduleAdvance(() => jump("aes", "fwd"), 160);
+}
+
+function pickAes(oIdx) {
+  state.aesAns[state.aesIdx] = oIdx;
+  render("none");
+  scheduleAdvance(() => {
+    if (state.aesIdx < AESTHETIC_10.length - 1) {
+      state.aesIdx++;
+      render("fwd");
+    } else {
+      state.patIdx = 0;
+      jump("pattern_quiz", "fwd");
+    }
+  }, 190);
+}
+
+function pickPat(oIdx) {
+  state.patAns[state.patIdx] = oIdx;
+  render("none");
+  scheduleAdvance(() => {
+    if (state.patIdx < PATTERN_QUIZ_4.length - 1) {
+      state.patIdx++;
+      render("fwd");
+    } else {
+      jump("crochet_years", "fwd");
+    }
+  }, 190);
+}
+
+function pickYears(id) {
+  state.crochetYears = id;
+  render("none");
+  scheduleAdvance(() => jump("main_category", "fwd"), 180);
+}
+
+function pickCategory(id) {
+  state.mainCategory = id;
+  render("none");
+  scheduleAdvance(() => jump("pattern_habit", "fwd"), 180);
+}
+
+function pickPatternHabit(id) {
+  state.patternHabit = id;
+  render("none");
+  scheduleAdvance(() => jump("can_create", "fwd"), 180);
+}
+
+function pickCreateLevel(id) {
+  state.createLevel = id;
+  render("none");
+  scheduleAdvance(() => jump("can_draw_pattern", "fwd"), 180);
+}
+
+function pickDrawPattern(id) {
+  state.drawPattern = id;
+  render("none");
+  scheduleAdvance(() => jump("experience", "fwd"), 180);
+}
+
+function pickExp(flag) {
+  state.hasExperience = flag;
+  render("none");
+  scheduleAdvance(() => jump("daily_time", "fwd"), 180);
+}
+
+function pickTime(id) {
+  state.dailyHours = id;
+  render("none");
+  scheduleAdvance(() => jump("wage", "fwd"), 180);
+}
+
+function pickWage(oIdx) {
+  state.wageAns[state.wageIdx] = oIdx;
+  render("none");
+  scheduleAdvance(() => {
+    if (state.wageIdx < WAGE_QUESTIONS.length - 1) {
+      state.wageIdx++;
+      render("fwd");
+    } else {
+      jump(state.hasExperience === false ? "p1" : "order_proof", "fwd");
+    }
+  }, 190);
+}
+
+function onWaitAction(waitKey) {
+  if (!state.subscribed[waitKey]) { openWxSheet("wxSubSheet"); return; }
+  const ev = evaluateHiddenCriteria();
+  if (ev.activeTier !== "priority") {
+    showToast("提醒已打开，有消息会发微信通知你");
+    return;
+  }
+  if (waitKey === "wait_1") jump("test_guide", "fwd");
+  else if (waitKey === "wait_2") jump("ship_addr", "fwd");
+  else if (waitKey === "wait_3") jump("deposit_pay", "fwd");
+}
+
+function submitManualPhone() {
+  if (state.phone.trim().length < 11) { showToast("请输入完整的 11 位手机号", "warn"); return; }
+  jump(state.locDenied && !state.weaverAddr ? "addr_fallback" : "deposit_notice", "fwd");
+}
+
+function submitManualAddr() {
+  if (state.weaverAddr.trim().length < 2) { showToast("请先填写收货地址", "warn"); return; }
+  jump("deposit_notice", "fwd");
+}
+
+function submitManualTrack() {
+  if (state.trackingNo.trim().length < 6) { showToast("请先扫一扫或填好快递单号", "warn"); return; }
+  state.shipMode = "self_dropoff";
+  jump("wait_3", "fwd");
+}
+
+function goBack() {
+  clearTimeout(autoTimer);
+  const v = state.view;
+  if (v === "aes") {
+    if (state.aesIdx > 0) { state.aesIdx--; return render("back"); }
+    return jump("deposit_notice", "back");
+  }
+  if (v === "pattern_quiz") {
+    if (state.patIdx > 0) { state.patIdx--; return render("back"); }
+    state.aesIdx = AESTHETIC_10.length - 1;
+    return jump("aes", "back");
+  }
+  if (v === "crochet_years") {
+    state.patIdx = PATTERN_QUIZ_4.length - 1;
+    return jump("pattern_quiz", "back");
+  }
+  if (v === "wage") {
+    if (state.wageIdx > 0) { state.wageIdx--; return render("back"); }
+    return jump("daily_time", "back");
+  }
+  if (v === "deposit_notice") {
+    if (state.locDenied) return jump("addr_fallback", "back");
+    if (state.phoneDenied) return jump("phone_fallback", "back");
+    return jump("welcome", "back");
+  }
+  if (v === "addr_fallback") return jump(state.phoneDenied ? "phone_fallback" : "welcome", "back");
+  if (v === "p1") return jump(state.hasExperience === false ? "wage" : "order_proof", "back");
+  const prev = {
+    phone_fallback: "welcome",
+    main_category: "crochet_years",
+    pattern_habit: "main_category",
+    can_create: "pattern_habit",
+    can_draw_pattern: "can_create",
+    experience: "can_draw_pattern",
+    daily_time: "experience",
+    order_proof: "wage",
+    p2: "p1",
+    p3: "p2",
+    wait_1: "p3",
+    test_guide: "wait_1",
+    t1: "test_guide",
+    t2: "t1",
+    t3: "t2",
+    wait_2: "t3",
+    ship_addr: "wait_2",
+    ship_no: "ship_addr",
+    wait_3: state.shipMode === "self_dropoff" ? "ship_no" : "ship_addr",
+    deposit_pay: "wait_3",
+    approved: "deposit_pay"
+  }[v];
+  if (prev) jump(prev, "back");
+}
+
+function jump(id, animDir = "none") {
+  clearTimeout(autoTimer);
+  closeAllWxSheets();
+  clearTimeout(showToast._t);
+  const toastEl = document.getElementById("toast");
+  if (toastEl) toastEl.classList.remove("show");
+  state.view = id;
+  render(animDir);
+}
+
+/* Inputs & Helpers */
+function onWeaverAddr(v) {
+  state.locationSource = "manual_input";
+  state.weaverAddr = v;
+  const btn = document.getElementById("submitAddrBtn");
+  if (btn) btn.classList.toggle("muted-cta", v.trim().length < 2);
+  renderReviewer();
+}
+function onPhoneInput(v) {
+  state.phone = v.replace(/\D/g, "").slice(0, 11);
+  state.phoneSource = "manual";
+  const btn = document.getElementById("submitPhoneBtn");
+  if (btn) btn.classList.toggle("muted-cta", state.phone.length < 11);
+  renderReviewer();
+}
+function pickStitch(i) { state.stitchIdx = i; render("none"); }
+function copyAddr() { if (navigator.clipboard) navigator.clipboard.writeText("无限天真收件处 138-0571-8899 浙江省杭州市滨江区江南大道 3 号楼 204").catch(() => {}); showToast("地址已复制"); }
+function onTrack(v) {
+  state.trackingNo = v; const c = detectCarrier(v); const el = document.getElementById("carHint");
+  if (el) el.textContent = c ? `快递公司：${c}` : "";
+  const btn = document.getElementById("submitTrackBtn");
+  if (btn) btn.classList.toggle("muted-cta", v.trim().length < 6);
+  renderReviewer();
+}
+
+/* Reviewer Simulators */
+function setPoolMode(id) { state.poolMode = id; renderReviewer(); showToast(id === "auto" ? "已切回：按实际暗标自动判定" : "已切换后台强制分流模拟"); }
+function simFillPass() {
+  state.wxAgreed = true; state.phone = "13805718899"; state.phoneSource = "wx_get_phone_number";
+  state.locAuthorized = true; state.weaverAddr = "浙江省杭州市滨江区西兴街道"; state.depositAccepted = true;
+  AESTHETIC_10.forEach((q, i) => { state.aesAns[i] = q.ans; });
+  PATTERN_QUIZ_4.forEach((q, i) => { state.patAns[i] = q.ans; });
+  state.crochetYears = "7_plus"; state.mainCategory = "doll"; state.patternHabit = "text";
+  state.createLevel = "any_shape"; state.drawPattern = "both";
+  state.hasExperience = true; state.dailyHours = "high";
+  WAGE_QUESTIONS.forEach((q) => { state.wageAns[q.idx] = q.fairIdx; });
+  state.orderProofUploaded = true; state.pPhotos = [true, true, true];
+  state.poolMode = "auto";
+  jump("wait_1", "none");
+  showToast("10/10全中+英文图解加分：开启消息提醒后可进测试题");
+}
+function simFillReserve() {
+  state.wxAgreed = true; state.phone = "13805718899"; state.locAuthorized = true; state.weaverAddr = "浙江省杭州市滨江区西兴街道"; state.depositAccepted = true;
+  AESTHETIC_10.forEach((q, i) => { state.aesAns[i] = i < 8 ? q.ans : 1 - q.ans; });
+  state.patAns = { 0: 1, 1: 1, 2: 3, 3: 3 };
+  state.crochetYears = "2_3"; state.mainCategory = "bag"; state.patternHabit = "symbol";
+  state.createLevel = "follow"; state.drawPattern = "none";
+  state.hasExperience = false; state.dailyHours = "mid"; state.wageAns = { 0: 2, 1: 2, 2: 2 };
+  state.pPhotos = [true, true, true]; state.poolMode = "auto";
+  jump("wait_1", "none");
+  showToast("审美8/10：后台进储备库，前台平和等待");
+}
+function simFillMiss() {
+  state.wxAgreed = true; state.phone = "13805718899"; state.locAuthorized = true; state.weaverAddr = "浙江省杭州市滨江区西兴街道"; state.depositAccepted = true;
+  AESTHETIC_10.forEach((q, i) => { state.aesAns[i] = i < 4 ? q.ans : 1 - q.ans; });
+  state.patAns = { 0: 0, 1: 0, 2: 3, 3: 3 };
+  state.crochetYears = "lt_1"; state.mainCategory = "clothes"; state.patternHabit = "video";
+  state.createLevel = "follow"; state.drawPattern = "none";
+  state.hasExperience = false; state.dailyHours = "low"; state.wageAns = { 0: 3, 1: 3, 2: 3 };
+  state.pPhotos = [true, true, true]; state.poolMode = "auto";
+  jump("wait_1", "none");
+  showToast("审美4/10：后台静默不入库，前台零失败提示");
+}
+function simSampleSigned() { state.sampleSigned = true; jump("wait_3", "none"); showToast("仓库已签收入档，杜绝无回音投诉"); }
+function resetAll() {
+  clearTimeout(autoTimer);
+  Object.assign(state, {
+    view: "welcome", wxAgreed: false, phone: "", phoneSource: "", phoneDenied: false,
+    locAuthorized: false, locDenied: false, locationSource: "", weaverAddr: "",
+    depositAccepted: false, aesIdx: 0, aesAns: {}, patIdx: 0, patAns: {},
+    crochetYears: null, mainCategory: null, patternHabit: null, createLevel: null, drawPattern: null,
+    hasExperience: null, dailyHours: null,
+    wageIdx: 0, wageAns: {}, orderProofUploaded: false, pPhotos: [false, false, false],
+    subscribed: { wait_1: false, wait_2: false, wait_3: false },
+    stitchIdx: 0, tPhotos: [false, false, false],
+    pickupAddr: "", pickupSlot: "今天 14:00-16:00", shipMode: "kd100_pickup",
+    trackingNo: "", sampleSigned: false, depositPaid: false, poolMode: "auto"
+  });
+  closeAllWxSheets();
+  render("none");
+}
+
+window.addEventListener("keydown", (e) => {
+  if (e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA")) return;
+  if (e.key === "Escape") { closeAllWxSheets(); return; }
+  const idx = SCREENS.findIndex((s) => s.id === state.view);
+  if (e.key === "ArrowRight" && idx >= 0 && idx < SCREENS.length - 1) { e.preventDefault(); jump(SCREENS[idx + 1].id, "none"); }
+  else if (e.key === "ArrowLeft" && idx > 0) { e.preventDefault(); jump(SCREENS[idx - 1].id, "none"); }
+});
+
+(() => {
+  try {
+    const s = new URLSearchParams(window.location.search).get("s");
+    if (s && SCREENS.some((x) => x.id === s)) state.view = s;
+  } catch (_) {}
+  render("none");
+})();
+</script>
+</body>
+</html>

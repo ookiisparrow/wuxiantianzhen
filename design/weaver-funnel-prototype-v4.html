@@ -1,0 +1,2601 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
+<meta name="theme-color" content="#F5F6F8" />
+<title>无限天真 · 织女筛选流程原型 v4（微信授权 + 审美暗测 + 静默分层入库）</title>
+<style>
+  /* ===== 1. Adopted Palette: 质检靛青灰 (slate_indigo) + WeUI Typography Tokens ===== */
+  :root {
+    --stage-bg: #E2E5EC;
+    --bg: #F5F6F8;
+    --card: #FFFFFF;
+    --soft: #EEF0F4;
+    --line: rgba(21, 25, 34, 0.08);
+    --line-strong: #C7CFDF;
+    --input-border: #8590A6;
+    --stitch: #8E9BB5;
+
+    --brand: #293B63;
+    --brand-dark: #1D2B4A;
+    --brand-soft: #F0F3F9;
+    --brand-line: rgba(41, 59, 99, 0.24);
+    --btn-shadow: rgba(29, 43, 74, 0.12);
+
+    --wx-green: #07C160;
+    --wx-green-soft: #EAF9F0;
+
+    --ok: #177245;
+    --ok-soft: #ECF6F0;
+    --ok-line: rgba(23, 114, 69, 0.24);
+
+    --warn: #945610;
+    --warn-soft: #FDF5E8;
+    --warn-line: rgba(148, 86, 16, 0.26);
+
+    --bad: #C43626;
+    --bad-soft: #FDF0EE;
+    --bad-line: rgba(196, 54, 38, 0.26);
+
+    --ink: rgba(17, 24, 39, 0.92);
+    --ink-mid: rgba(17, 24, 39, 0.64);
+    --ink-sub: rgba(17, 24, 39, 0.46);
+
+    --font-hero: 34px;
+    --font-h1: 22px;     /* WeUI 页面大标题 22px / 44rpx */
+    --font-body: 17px;   /* WeUI 主正文 / 导航栏 / 主按钮 / 选项主文案 17px / 34rpx */
+    --font-sub: 15px;    /* WeUI 次要正文 15px / 30rpx */
+    --font-desc: 14px;   /* WeUI 辅助说明 14px / 28rpx */
+    --font-cap: 12px;    /* WeUI 次级标签 / 状态栏 12px / 24rpx */
+
+    --radius-card: 12px;
+    --radius-outer: 18px;
+    --radius-inner: 8px;
+    --radius-btn: 10px;
+    --card-shadow: 0 1px 2px rgba(17, 24, 39, 0.03), 0 4px 12px rgba(17, 24, 39, 0.025);
+
+    --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+    --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+    --dur-press: 120ms;
+    --dur-fade: 125ms;
+    --dur-enter: 175ms;
+    --dur-sheet-in: 240ms;
+    --dur-sheet-out: 180ms;
+  }
+
+  * {
+    box-sizing: border-box;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    min-height: 100vh;
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    color: var(--ink);
+    background: var(--stage-bg);
+    -webkit-font-smoothing: antialiased;
+    -webkit-text-size-adjust: 100%;
+    overscroll-behavior: none;
+  }
+
+  button, [role="radio"], [role="checkbox"], .wx-top, .stage-bar {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+
+  button, input, a, [role="radio"], [role="checkbox"] {
+    touch-action: manipulation;
+  }
+
+  button:focus-visible, input:focus-visible, a:focus-visible {
+    outline: 2px solid var(--brand);
+    outline-offset: 2px;
+  }
+
+  /* ===== Stage Layout ===== */
+  .stage {
+    height: 100vh;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 28px;
+    padding: 16px 24px;
+  }
+
+  /* ===== 375pt WeChat Standard Viewport ===== */
+  .phone {
+    width: 375px;
+    height: min(760px, calc(100vh - 32px));
+    min-height: 620px;
+    background: var(--bg);
+    border-radius: 42px;
+    box-shadow:
+      0 0 0 8px #1E222B,
+      0 0 0 9.5px rgba(255, 255, 255, 0.18),
+      0 24px 56px rgba(17, 24, 39, 0.20);
+    overflow: hidden;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+  }
+
+  .wx-top {
+    flex-shrink: 0;
+    background: var(--bg);
+    position: relative;
+    z-index: 20;
+  }
+  .wx-status {
+    height: 42px;
+    padding: 12px 24px 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: var(--font-cap);
+    font-weight: 600;
+    letter-spacing: 0.2px;
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+  }
+  .wx-notch {
+    width: 104px;
+    height: 24px;
+    background: #14171F;
+    border-radius: 999px;
+    position: absolute;
+    top: 9px;
+    left: 50%;
+    transform: translateX(-50%);
+    pointer-events: none;
+  }
+  .wx-nav {
+    height: 44px;
+    padding: 0 12px 0 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .wx-back {
+    appearance: none;
+    border: none;
+    background: transparent;
+    color: var(--ink);
+    font-size: var(--font-sub);
+    font-weight: 400;
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    padding: 8px 6px 8px 0;
+    min-height: 44px;
+    cursor: pointer;
+    font-family: inherit;
+    min-width: 84px;
+    transition: opacity var(--dur-fade) var(--ease-out), transform var(--dur-press) var(--ease-out);
+  }
+  .wx-back:active { opacity: 0.55; transform: translateX(-2px); }
+  .wx-back.hidden { visibility: hidden; pointer-events: none; }
+  .wx-title {
+    font-size: var(--font-body);
+    font-weight: 500;
+    color: var(--ink);
+    text-align: center;
+    white-space: nowrap;
+  }
+  .wx-capsule {
+    width: 84px;
+    height: 30px;
+    border-radius: 999px;
+    border: 0.5px solid rgba(17, 24, 39, 0.12);
+    background: rgba(255, 255, 255, 0.68);
+    display: flex;
+    align-items: center;
+    justify-content: space-evenly;
+    flex-shrink: 0;
+  }
+  .wx-cap-div {
+    width: 0.5px;
+    height: 16px;
+    background: rgba(17, 24, 39, 0.14);
+  }
+
+  /* 5-Macro-Phase Hairline Progress Bar */
+  .stage-bar {
+    flex-shrink: 0;
+    padding: 4px 20px 8px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .stage-seg {
+    flex: 1;
+    height: 3px;
+    border-radius: 999px;
+    background: rgba(17, 24, 39, 0.08);
+    overflow: hidden;
+  }
+  .stage-seg-fill {
+    height: 100%;
+    border-radius: 999px;
+    background: var(--brand);
+    transition: width 220ms var(--ease-out), background-color 180ms var(--ease-out);
+  }
+  .stage-seg.done .stage-seg-fill {
+    background: var(--ok);
+    width: 100%;
+  }
+
+  /* Motion */
+  @keyframes enterFwd  { from { opacity: 0; transform: translateX(8px); }  to { opacity: 1; transform: translateX(0); } }
+  @keyframes enterBack { from { opacity: 0; transform: translateX(-8px); } to { opacity: 1; transform: translateX(0); } }
+  @keyframes fadeOnly  { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes badgePop  { from { opacity: 0; transform: scale(0.94); } to { opacity: 1; transform: scale(1); } }
+  @keyframes gentleNudge { 0%, 100% { transform: translateX(0); } 30% { transform: translateX(-4px); } 65% { transform: translateX(4px); } }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .screen.dir-fwd  > * { animation: enterFwd var(--dur-enter) var(--ease-out) both; }
+    .screen.dir-back > * { animation: enterBack var(--dur-enter) var(--ease-out) both; }
+    .badge-pop { animation: badgePop 180ms var(--ease-out) both; }
+    .nudge-attn {
+      animation: gentleNudge 240ms var(--ease-out);
+      box-shadow: 0 0 0 2px var(--brand) !important;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .screen.dir-fwd > *, .screen.dir-back > * { animation: fadeOnly 120ms ease both; }
+    .nudge-attn { box-shadow: 0 0 0 2px var(--brand) !important; }
+  }
+
+  /* ===== Main Viewport: STRICT NO SCROLL ===== */
+  .screen {
+    flex: 1;
+    min-height: 0;
+    min-width: 0;
+    overflow: hidden;
+    padding: 12px 20px 8px;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    position: relative;
+  }
+
+  .head-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 6px;
+    position: relative;
+  }
+  .h1 {
+    margin: 0;
+    min-width: 0;
+    flex: 1;
+    font-size: var(--font-h1);
+    font-weight: 600;
+    line-height: 1.34;
+    letter-spacing: -0.2px;
+    color: var(--ink);
+  }
+  .lead {
+    margin: 0 0 14px;
+    font-size: var(--font-desc);
+    font-weight: 400;
+    line-height: 1.48;
+    color: var(--ink-mid);
+  }
+
+  /* Audio Guide Button + Popover */
+  .speak-wrap { position: relative; flex-shrink: 0; padding-top: 1px; }
+  .speak-btn {
+    appearance: none;
+    position: relative;
+    height: 30px;
+    padding: 0 11px 0 9px;
+    border-radius: 999px;
+    border: 1px solid var(--brand-line);
+    background: var(--card);
+    color: var(--brand);
+    font-size: var(--font-cap);
+    font-weight: 500;
+    font-family: inherit;
+    white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+    box-shadow: 0 1px 2px rgba(17, 24, 39, 0.03);
+    transition: background-color var(--dur-fade) var(--ease-out), color var(--dur-fade) var(--ease-out), transform var(--dur-press) var(--ease-out);
+  }
+  .speak-btn::after { content: ""; position: absolute; inset: -7px -4px; }
+  .speak-btn:active { transform: scale(0.97); }
+  .speak-btn.speaking { background: var(--brand); border-color: var(--brand); color: #FFFFFF; }
+
+  .voice-pop {
+    position: absolute;
+    top: 36px;
+    right: 0;
+    width: 224px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: rgba(21, 25, 34, 0.94);
+    color: #FFFFFF;
+    font-size: var(--font-cap);
+    line-height: 1.45;
+    box-shadow: 0 10px 24px rgba(17, 24, 39, 0.18);
+    transform-origin: top right;
+    opacity: 0;
+    transform: scale(0.95) translateY(-3px);
+    pointer-events: none;
+    transition: opacity var(--dur-fade) var(--ease-out), transform 150ms var(--ease-out);
+    z-index: 45;
+  }
+  .voice-pop.open { opacity: 1; transform: scale(1) translateY(0); pointer-events: auto; }
+
+  /* ===== Step 0: Manual WeChat Login Consent ===== */
+  .wx-login-card {
+    width: 100%;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-card);
+    box-shadow: var(--card-shadow);
+    padding: 20px 16px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+  .wx-brand-mark {
+    width: 56px;
+    height: 56px;
+    border-radius: 16px;
+    background: var(--brand);
+    color: #FFFFFF;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .wx-acct-row {
+    width: 100%;
+    margin-top: 6px;
+    padding: 11px 12px;
+    border-radius: 10px;
+    background: var(--bg);
+    border: 1px solid var(--line);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    text-align: left;
+  }
+  .wx-avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 9px;
+    background: var(--wx-green-soft);
+    color: var(--ok);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    font-size: var(--font-sub);
+    font-weight: 600;
+  }
+
+  /* ===== Welcome ===== */
+  .wx-bound-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    align-self: flex-start;
+    padding: 4px 10px 4px 8px;
+    border-radius: 999px;
+    background: var(--ok-soft);
+    border: 1px solid var(--ok-line);
+    color: var(--ok);
+    font-size: var(--font-cap);
+    font-weight: 500;
+    margin-bottom: 10px;
+  }
+  .hero-art {
+    width: 100%;
+    height: 158px;
+    border-radius: var(--radius-card);
+    background: var(--card);
+    border: 1px solid var(--line);
+    box-shadow: var(--card-shadow);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 14px;
+    overflow: hidden;
+  }
+  .pillar-group {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-card);
+    box-shadow: var(--card-shadow);
+    display: flex;
+    margin-top: auto;
+    margin-bottom: 6px;
+    overflow: hidden;
+  }
+  .pillar-chip {
+    flex: 1;
+    min-width: 0;
+    padding: 12px 6px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    position: relative;
+  }
+  .pillar-chip + .pillar-chip::before {
+    content: "";
+    position: absolute;
+    left: 0; top: 16px; bottom: 16px;
+    width: 1px;
+    background: var(--line);
+  }
+  .pillar-ico {
+    width: 34px;
+    height: 34px;
+    border-radius: 9px;
+    background: var(--brand-soft);
+    color: var(--brand);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .pillar-txt { font-size: var(--font-desc); font-weight: 500; color: var(--ink); text-align: center; }
+
+  /* ===== Aesthetic A/B Comparison Cards (Neutral Selection — Zero Right/Wrong Hint) ===== */
+  .aes-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 10px;
+    flex: 1;
+    align-content: start;
+  }
+  .aes-card {
+    appearance: none;
+    padding: 0;
+    border-radius: var(--radius-card);
+    border: 1px solid var(--line);
+    background: var(--card);
+    box-shadow: var(--card-shadow);
+    overflow: hidden;
+    cursor: pointer;
+    font-family: inherit;
+    text-align: left;
+    display: flex;
+    flex-direction: column;
+    transition: border-color var(--dur-fade) var(--ease-out), background-color var(--dur-fade) var(--ease-out), transform var(--dur-press) var(--ease-out);
+  }
+  .aes-card:active { transform: scale(0.98); }
+  .aes-card.selected {
+    border: 1.5px solid var(--brand);
+    background: var(--brand-soft);
+  }
+  .aes-art {
+    width: 100%;
+    height: 184px;
+    background: #F9FAFB;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-bottom: 1px solid var(--line);
+  }
+  .aes-foot {
+    padding: 12px 12px;
+    min-height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    font-size: var(--font-body);
+    font-weight: 500;
+    color: var(--ink);
+  }
+  .aes-card.selected .aes-foot { color: var(--brand-dark); font-weight: 600; }
+
+  /* ===== Cards, Cells & Choices ===== */
+  .cell-group {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-card);
+    box-shadow: var(--card-shadow);
+    overflow: hidden;
+  }
+  .cell-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 13px 16px;
+    position: relative;
+  }
+  .cell-row + .cell-row::before {
+    content: "";
+    position: absolute;
+    left: 60px; right: 16px; top: 0;
+    height: 1px;
+    background: var(--line);
+  }
+  .cell-ico {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    background: var(--brand-soft);
+    color: var(--brand);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+  .cell-body { min-width: 0; flex: 1; }
+  .cell-main { font-size: var(--font-body); font-weight: 500; color: var(--ink); line-height: 1.35; }
+  .cell-desc { font-size: var(--font-desc); color: var(--ink-mid); margin-top: 2px; line-height: 1.4; }
+
+  .check-card {
+    appearance: none;
+    width: 100%;
+    margin-top: 12px;
+    padding: 13px 16px;
+    border-radius: var(--radius-card);
+    border: 1px solid var(--brand-line);
+    background: var(--card);
+    box-shadow: var(--card-shadow);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    text-align: left;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: var(--font-body);
+    font-weight: 500;
+    color: var(--ink);
+    transition: border-color var(--dur-fade) var(--ease-out), background-color var(--dur-fade) var(--ease-out), transform var(--dur-press) var(--ease-out);
+  }
+  .check-card:active { transform: scale(0.982); }
+  .check-card.checked { border-color: var(--ok); background: var(--ok-soft); color: var(--ok); }
+  .check-box {
+    width: 22px;
+    height: 22px;
+    border-radius: 6px;
+    border: 1.5px solid var(--input-border);
+    background: var(--card);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .check-card.checked .check-box { background: var(--ok); border-color: var(--ok); color: #FFFFFF; }
+
+  .stack { display: flex; flex-direction: column; gap: 10px; }
+  .grid-2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
+
+  .choice-card {
+    appearance: none;
+    width: 100%;
+    min-height: 76px;
+    padding: 14px 16px;
+    border-radius: var(--radius-card);
+    border: 1px solid var(--line);
+    background: var(--card);
+    box-shadow: var(--card-shadow);
+    color: var(--ink);
+    cursor: pointer;
+    font-family: inherit;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    text-align: left;
+    transition: border-color var(--dur-fade) var(--ease-out), background-color var(--dur-fade) var(--ease-out), transform var(--dur-press) var(--ease-out);
+  }
+  .choice-card:active { transform: scale(0.982); }
+  .choice-card.selected { border: 1.5px solid var(--brand); background: var(--brand-soft); }
+  .choice-left { display: flex; align-items: center; gap: 12px; min-width: 0; }
+  .choice-art {
+    width: 44px;
+    height: 44px;
+    border-radius: 10px;
+    background: var(--soft);
+    color: var(--brand);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .choice-card.selected .choice-art { background: var(--card); }
+
+  .weui-radio {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    border: 1.5px solid var(--line-strong);
+    background: var(--card);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .weui-radio svg { opacity: 0; }
+  .selected .weui-radio { border-color: var(--brand); background: var(--brand); color: #FFFFFF; }
+  .selected .weui-radio svg { opacity: 1; }
+
+  /* Step Meta + Price Estimation */
+  .step-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+    font-size: var(--font-cap);
+    color: var(--ink-sub);
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+  }
+  .step-dots { display: flex; gap: 6px; width: 120px; }
+  .s-dot { flex: 1; height: 4px; border-radius: 999px; background: rgba(17, 24, 39, 0.10); }
+  .s-dot.cur { background: var(--brand); }
+  .s-dot.done { background: var(--ok); }
+
+  .sample-card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-card);
+    box-shadow: var(--card-shadow);
+    overflow: hidden;
+    margin-bottom: 12px;
+  }
+  .sample-art {
+    height: 126px;
+    background: #F9FAFB;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+  }
+  .sample-badge {
+    position: absolute;
+    bottom: 8px;
+    right: 10px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.92);
+    border: 1px solid var(--line);
+    font-size: var(--font-cap);
+    color: var(--ink-mid);
+    font-weight: 500;
+  }
+  .sample-bar { padding: 9px 14px; border-top: 1px solid var(--line); }
+  .sample-name { font-size: var(--font-sub); font-weight: 600; color: var(--ink); }
+
+  .price-opt {
+    appearance: none;
+    min-height: 54px;
+    padding: 10px 14px;
+    border-radius: var(--radius-card);
+    border: 1px solid var(--line);
+    background: var(--card);
+    box-shadow: var(--card-shadow);
+    color: var(--ink);
+    font-size: var(--font-body);
+    font-weight: 500;
+    font-family: inherit;
+    font-variant-numeric: tabular-nums;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    cursor: pointer;
+  }
+  .price-opt:active { transform: scale(0.975); }
+  .price-opt.selected { border: 1.5px solid var(--brand); background: var(--brand-soft); color: var(--brand-dark); font-weight: 600; }
+
+  /* One-Tap Primary Action Card + Labeled Input */
+  .action-card {
+    appearance: none;
+    width: 100%;
+    padding: 18px 16px;
+    border-radius: var(--radius-card);
+    border: 1px solid var(--line);
+    background: var(--card);
+    box-shadow: var(--card-shadow);
+    color: var(--ink);
+    font-family: inherit;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    margin-bottom: 14px;
+  }
+  .action-card:active { transform: scale(0.985); background: var(--soft); }
+  .action-card.done { border-color: var(--ok-line); background: var(--ok-soft); }
+  .action-ico {
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    background: var(--brand-soft);
+    color: var(--brand);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .action-sub {
+    max-width: 100%;
+    font-size: var(--font-desc);
+    color: var(--ink-sub);
+    font-variant-numeric: tabular-nums;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .field-lbl { display: block; font-size: var(--font-desc); font-weight: 500; color: var(--ink-mid); margin-bottom: 6px; }
+  .big-input {
+    width: 100%;
+    height: 48px;
+    padding: 0 14px;
+    border-radius: var(--radius-btn);
+    border: 1px solid var(--input-border);
+    background: var(--card);
+    font-size: var(--font-body);
+    color: var(--ink);
+    font-family: inherit;
+    font-variant-numeric: tabular-nums;
+    outline: none;
+  }
+  .big-input::placeholder { color: var(--ink-sub); font-size: var(--font-sub); }
+  .big-input:focus { border-color: var(--brand); border-width: 1.5px; }
+
+  /* Photo Comparison + Concentric Viewfinder */
+  .guide-pair { display: flex; gap: 10px; margin-bottom: 12px; }
+  .guide-box {
+    flex: 1;
+    min-width: 0;
+    border-radius: var(--radius-card);
+    overflow: hidden;
+    border: 1px solid var(--line);
+    background: var(--card);
+    box-shadow: var(--card-shadow);
+    position: relative;
+  }
+  .guide-badge {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    height: 20px;
+    padding: 0 7px 0 6px;
+    border-radius: 999px;
+    font-size: var(--font-cap);
+    font-weight: 500;
+    white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    color: #FFFFFF;
+  }
+  .guide-box.good .guide-badge { background: var(--ok); }
+  .guide-box.bad .guide-badge { background: var(--bad); }
+  .guide-svg { display: block; width: 100%; height: 106px; }
+  .guide-lbl { padding: 7px 6px; font-size: var(--font-desc); font-weight: 500; text-align: center; border-top: 1px solid var(--line); }
+  .guide-box.good .guide-lbl { color: var(--ok); background: var(--ok-soft); }
+  .guide-box.bad .guide-lbl { color: var(--bad); background: var(--bad-soft); }
+
+  .upload-area {
+    appearance: none;
+    width: 100%;
+    flex: 1;
+    min-height: 136px;
+    max-height: 176px;
+    border-radius: var(--radius-outer);
+    border: 1px solid var(--line);
+    background: var(--card);
+    box-shadow: var(--card-shadow);
+    padding: 10px;
+    cursor: pointer;
+    font-family: inherit;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .upload-area:active { transform: scale(0.985); }
+  .upload-inner {
+    width: 100%;
+    height: 100%;
+    border-radius: var(--radius-inner);
+    border: 1.5px dashed var(--stitch);
+    background: var(--bg);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    padding: 10px;
+  }
+  .upload-area.done .upload-inner { border-style: solid; border-color: var(--ok-line); background: var(--ok-soft); }
+  .upload-title { font-size: var(--font-body); font-weight: 500; color: var(--brand); }
+  .upload-sub { font-size: var(--font-desc); color: var(--ink-sub); text-align: center; }
+  .upload-area.done .upload-title { color: var(--ok); }
+  .upload-area.done .upload-sub { color: var(--ok); opacity: 0.85; }
+
+  /* Trial Guide */
+  .trial-visual {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-card);
+    box-shadow: var(--card-shadow);
+    padding: 9px 14px;
+    margin-bottom: 10px;
+  }
+  .stitch-list {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-card);
+    box-shadow: var(--card-shadow);
+    overflow: hidden;
+  }
+  .stitch-row {
+    appearance: none;
+    width: 100%;
+    border: none;
+    background: transparent;
+    padding: 10px 14px;
+    min-height: 44px;
+    font-size: var(--font-sub);
+    font-family: inherit;
+    color: var(--ink);
+    text-align: left;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    cursor: pointer;
+    position: relative;
+  }
+  .stitch-row + .stitch-row::before { content: ""; position: absolute; left: 14px; right: 14px; top: 0; height: 1px; background: var(--line); }
+  .stitch-row.active { background: var(--brand-soft); color: var(--brand-dark); font-weight: 600; }
+  .stitch-row.done { color: var(--ink-mid); }
+  .stitch-tag { display: inline-block; min-width: 54px; margin-right: 4px; font-size: var(--font-desc); color: var(--ink-sub); font-variant-numeric: tabular-nums; }
+  .stitch-row.active .stitch-tag { color: var(--brand); font-weight: 600; }
+
+  /* Shipping Address Card */
+  .addr-card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-card);
+    box-shadow: var(--card-shadow);
+    padding: 14px 16px;
+    font-size: var(--font-sub);
+    line-height: 1.55;
+    color: var(--ink);
+  }
+  .addr-row { display: flex; align-items: flex-start; gap: 8px; }
+  .addr-row + .addr-row { margin-top: 4px; }
+  .addr-k { color: var(--ink-sub); flex-shrink: 0; width: 46px; font-size: var(--font-desc); padding-top: 1px; }
+  .addr-v { min-width: 0; flex: 1; }
+  .addr-copy-btn {
+    appearance: none;
+    width: 100%;
+    min-height: 44px;
+    margin-top: 12px;
+    border: 1px solid var(--brand-line);
+    border-radius: 9px;
+    background: var(--brand-soft);
+    color: var(--brand);
+    font-size: var(--font-sub);
+    font-weight: 500;
+    font-family: inherit;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    cursor: pointer;
+  }
+  .addr-copy-btn:active { transform: scale(0.982); }
+
+  .tip-banner {
+    margin-top: 12px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    font-size: var(--font-desc);
+    line-height: 1.44;
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .tip-banner svg { flex-shrink: 0; margin-top: 2px; }
+  .tip-ok { background: var(--ok-soft); color: var(--ok); border: 1px solid var(--ok-line); }
+  .tip-soft { background: var(--brand-soft); color: var(--brand-dark); border: 1px solid var(--brand-line); }
+
+  /* Center Calm Waiting / Status Screens */
+  .center-block {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    gap: 10px;
+    padding: 0 6px;
+  }
+  .big-num { font-size: var(--font-hero); font-weight: 600; color: var(--ink); line-height: 1.15; letter-spacing: -0.5px; font-variant-numeric: tabular-nums; }
+  .calm-card {
+    width: 100%;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-card);
+    box-shadow: var(--card-shadow);
+    padding: 14px 16px;
+    text-align: left;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 4px;
+  }
+  .calm-line { display: flex; align-items: center; gap: 8px; font-size: var(--font-desc); color: var(--ink-mid); }
+  .calm-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--brand); flex-shrink: 0; }
+  .calm-dot.ok { background: var(--ok); }
+
+  .id-verified-box {
+    margin-top: 12px;
+    background: var(--card);
+    border: 1px solid var(--ok-line);
+    border-radius: var(--radius-card);
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .yarn-4x3 { width: 100%; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-top: 4px; }
+  .yarn-dot-card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 9px 4px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 5px;
+    font-size: var(--font-cap);
+    font-weight: 500;
+    color: var(--ink-mid);
+  }
+  .yarn-ball { width: 20px; height: 20px; border-radius: 50%; border: 1px solid rgba(17, 24, 39, 0.12); flex-shrink: 0; }
+  .id-badge {
+    font-size: var(--font-cap);
+    font-weight: 600;
+    color: var(--ok);
+    background: var(--ok-soft);
+    padding: 4px 8px;
+    border-radius: 6px;
+    white-space: nowrap;
+    flex-shrink: 0;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ===== ONE GLOBAL FIXED BOTTOM BUTTON ===== */
+  .global-footer {
+    flex-shrink: 0;
+    padding: 8px 20px calc(12px + env(safe-area-inset-bottom, 0px));
+    background: var(--bg);
+    position: relative;
+    z-index: 10;
+  }
+  .next-btn {
+    appearance: none;
+    border: 1px solid transparent;
+    width: 100%;
+    height: 48px;
+    border-radius: var(--radius-btn);
+    background: var(--brand);
+    color: #FFFFFF;
+    font-size: var(--font-body);
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    cursor: pointer;
+    font-family: inherit;
+    box-shadow: 0 4px 12px var(--btn-shadow);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color var(--dur-fade) var(--ease-out), transform var(--dur-press) var(--ease-out);
+  }
+  .next-btn:active { transform: scale(0.975); }
+  .next-btn[aria-disabled="true"] {
+    background: #E4E8F0;
+    color: #424D63;
+    border-color: var(--line-strong);
+    box-shadow: none;
+  }
+
+  .home-bar { height: 14px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; background: var(--bg); }
+  .home-bar span { width: 120px; height: 4px; border-radius: 999px; background: rgba(17, 24, 39, 0.18); }
+
+  /* ===== Toast ===== */
+  .toast {
+    position: absolute;
+    top: 92px;
+    left: 50%;
+    max-width: calc(100% - 32px);
+    transform: translate3d(-50%, -8px, 0) scale(0.96);
+    transform-origin: top center;
+    background: rgba(21, 25, 34, 0.96);
+    color: #FFFFFF;
+    padding: 9px 15px;
+    border-radius: 999px;
+    box-shadow: 0 10px 24px rgba(17, 24, 39, 0.22);
+    font-size: var(--font-desc);
+    font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    z-index: 95;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 150ms var(--ease-out), transform 180ms var(--ease-out);
+    white-space: nowrap;
+  }
+  .toast.show { opacity: 1; transform: translate3d(-50%, 0, 0) scale(1); pointer-events: auto; }
+
+  /* ===== Payment Bottom Sheet ===== */
+  .sheet-mask {
+    position: absolute;
+    inset: 0;
+    background: rgba(17, 24, 39, 0.46);
+    z-index: 80;
+    display: flex;
+    align-items: flex-end;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity var(--dur-sheet-out) var(--ease-out), visibility var(--dur-sheet-out) var(--ease-out);
+  }
+  .sheet-mask.open { opacity: 1; visibility: visible; pointer-events: auto; transition: opacity var(--dur-sheet-in) var(--ease-out), visibility var(--dur-sheet-in) var(--ease-out); }
+  .sheet-box {
+    width: 100%;
+    background: var(--card);
+    border-radius: 18px 18px 0 0;
+    padding: 10px 20px 26px;
+    transform: translate3d(0, 100%, 0);
+    transition: transform var(--dur-sheet-out) var(--ease-out);
+  }
+  .sheet-mask.open .sheet-box { transform: translate3d(0, 0, 0); transition: transform var(--dur-sheet-in) var(--ease-drawer); }
+  .sheet-grabber { width: 36px; height: 4px; border-radius: 999px; background: rgba(17, 24, 39, 0.16); margin: 0 auto 10px; }
+  .sheet-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+  .sheet-close {
+    appearance: none; min-width: 44px; min-height: 44px; margin: -8px -8px -8px 0;
+    border: none; background: transparent; color: var(--ink-mid); font-size: var(--font-desc); font-weight: 500; font-family: inherit; cursor: pointer;
+  }
+
+  /* ===== External Review Panel: Hidden Tags + Standard Answers + Silent Pool ===== */
+  .reviewer {
+    width: 360px;
+    height: min(760px, calc(100vh - 32px));
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    box-shadow: var(--card-shadow);
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  .rev-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+  .rev-title { margin: 0; font-size: 14px; font-weight: 600; color: var(--ink); }
+  .ver-links { display: flex; gap: 4px; }
+  .v-link { font-size: 11px; font-weight: 500; color: var(--brand); text-decoration: none; padding: 3px 7px; border-radius: 6px; background: var(--brand-soft); }
+  .rev-note { margin: 0; font-size: 11.5px; line-height: 1.48; color: var(--ink-mid); }
+
+  .pool-box {
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 13px;
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .pool-top { display: flex; align-items: center; justify-content: space-between; gap: 6px; font-size: 11px; font-weight: 600; color: var(--ink-mid); }
+  .pool-pill { padding: 2px 7px; border-radius: 999px; font-size: 10.5px; font-weight: 600; white-space: nowrap; }
+  .pool-pill.priority { background: var(--ok-soft); color: var(--ok); }
+  .pool-pill.reserve  { background: var(--brand-soft); color: var(--brand); }
+  .pool-pill.silent   { background: var(--warn-soft); color: var(--warn); }
+
+  .tag-grid { display: flex; flex-wrap: wrap; gap: 4px; }
+  .h-tag {
+    font-size: 10.5px;
+    padding: 2px 6px;
+    border-radius: 5px;
+    border: 1px solid var(--line);
+    background: var(--card);
+    color: var(--ink-sub);
+  }
+  .h-tag.pass { background: var(--ok-soft); border-color: var(--ok-line); color: var(--ok); font-weight: 500; }
+  .h-tag.miss { background: var(--bad-soft); border-color: var(--bad-line); color: var(--bad); font-weight: 500; }
+
+  .seg-row { display: flex; gap: 4px; }
+  .seg-btn {
+    appearance: none;
+    flex: 1;
+    border: 1px solid var(--line);
+    background: var(--card);
+    color: var(--ink-mid);
+    padding: 5px 3px;
+    border-radius: 7px;
+    font-size: 10.5px;
+    font-weight: 500;
+    cursor: pointer;
+    font-family: inherit;
+    text-align: center;
+  }
+  .seg-btn.active { border-color: var(--brand); background: var(--brand); color: #FFFFFF; font-weight: 600; }
+
+  .rev-list { display: flex; flex-direction: column; gap: 2px; }
+  .rev-btn {
+    appearance: none;
+    border: 1px solid transparent;
+    background: var(--bg);
+    color: var(--ink-mid);
+    padding: 5px 9px;
+    border-radius: 7px;
+    font-size: 11.5px;
+    text-align: left;
+    cursor: pointer;
+    font-family: inherit;
+    display: flex;
+    justify-content: space-between;
+    gap: 6px;
+  }
+  .rev-btn.active { background: var(--brand); color: #FFFFFF; font-weight: 500; }
+  .rev-btn.muted-skip { opacity: 0.52; }
+
+  .rev-sim-row { display: flex; flex-wrap: wrap; gap: 4px; }
+  .rev-sim {
+    appearance: none;
+    border: 1px solid var(--line-strong);
+    background: var(--card);
+    color: var(--ink-mid);
+    padding: 4px 8px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 500;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .rev-json {
+    margin: 0;
+    padding: 8px;
+    border-radius: 9px;
+    background: #161922;
+    color: #E2E8F0;
+    font-size: 10.5px;
+    line-height: 1.45;
+    overflow-x: auto;
+    white-space: pre-wrap;
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .choice-card:not(.selected):hover,
+    .aes-card:not(.selected):hover,
+    .price-opt:not(.selected):hover,
+    .upload-area:hover,
+    .action-card:hover { border-color: var(--line-strong); }
+    .rev-sim:hover { border-color: var(--brand); color: var(--brand); }
+    .v-link:hover { opacity: 0.85; }
+  }
+
+  @media (max-width: 780px) {
+    .stage { flex-direction: column; align-items: center; padding: 10px; height: auto; min-height: 100vh; overflow-y: auto; }
+    .reviewer { width: 375px; max-width: 100%; height: auto; max-height: none; }
+  }
+  @media (max-width: 460px) {
+    .stage { padding: 0; height: 100dvh; overflow: hidden; }
+    .phone { width: 100vw; height: 100dvh; min-height: 0; border-radius: 0; box-shadow: none; }
+    .wx-notch, .reviewer { display: none; }
+  }
+</style>
+</head>
+<body>
+<div class="stage">
+  <!-- ===== 375pt WeChat Viewport (v4.1 Updated) ===== -->
+  <div id="phoneRoot" class="phone" onclick="handlePhoneOutsideClick(event)">
+    <header id="appHeader" class="wx-top">
+      <div class="wx-status">
+        <span>9:41</span>
+        <div class="wx-notch" aria-hidden="true"></div>
+        <span>5G 100%</span>
+      </div>
+      <div class="wx-nav">
+        <button id="btnBack" class="wx-back hidden" type="button" onclick="goBack()">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
+          <span>返回</span>
+        </button>
+        <div id="navTitle" class="wx-title">无限天真</div>
+        <div class="wx-capsule" aria-hidden="true">
+          <svg width="20" height="10" viewBox="0 0 22 10" fill="currentColor"><circle cx="4" cy="5" r="1.6"/><circle cx="11" cy="5" r="2.1"/><circle cx="18" cy="5" r="1.6"/></svg>
+          <span class="wx-cap-div"></span>
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5.2" stroke="currentColor" stroke-width="1.3"/><circle cx="7" cy="7" r="2" fill="currentColor"/></svg>
+        </div>
+      </div>
+    </header>
+
+    <div id="stageBar" class="stage-bar" role="progressbar" aria-valuemin="1" aria-valuemax="28" aria-valuenow="1" aria-label="入驻进度"></div>
+
+    <main id="screen" class="screen" tabindex="-1"></main>
+
+    <footer id="appFooter" class="global-footer">
+      <button id="nextBtn" class="next-btn" type="button" onclick="onNext()">下一步</button>
+    </footer>
+    <div class="home-bar" aria-hidden="true"><span></span></div>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+    <!-- WeChat Deposit Bottom Sheet -->
+    <div id="paySheet" class="sheet-mask" onclick="if(event.target===this) closePaySheet()">
+      <div class="sheet-box" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
+        <div class="sheet-grabber" aria-hidden="true"></div>
+        <div class="sheet-head">
+          <div id="sheetTitle" class="h1" style="font-size:var(--font-body);">缴纳保证金 ¥200.00</div>
+          <button class="sheet-close" type="button" onclick="closePaySheet()">关闭</button>
+        </div>
+        <p class="lead" style="margin-bottom:18px;">资金存入防损专户，结清在途订单随时原路全退。</p>
+        <button class="next-btn" type="button" onclick="confirmPaid()">确认支付 ¥200</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== External Review Panel: Live Hidden Tags & Silent Elimination Engine ===== -->
+  <aside class="reviewer" aria-label="v4 流程与暗审评审台">
+    <div class="rev-head">
+      <h2 class="rev-title">织女筛选 v4 · 暗审标记版</h2>
+      <div class="ver-links">
+        <a class="v-link" href="./weaver-funnel-prototype-v3.html">v3</a>
+      </div>
+    </div>
+    <p class="rev-note">每道题写入后台<strong>隐藏标记</strong>并对照标准答案；仅暗中达标织女收到通知进入测试题，手机端全程<strong>零对错提示、零淘汰告知</strong>。</p>
+
+    <div class="pool-box">
+      <div class="pool-top">
+        <span>后台暗审标记与分流（织女不可见）</span>
+        <span id="poolBadge" class="pool-pill priority">优先接单库</span>
+      </div>
+      <div id="hiddenTagGrid" class="tag-grid"></div>
+      <div id="poolNote" style="font-size:11px;color:var(--ink-mid);line-height:1.4;"></div>
+      <div id="poolBtns" class="seg-row"></div>
+    </div>
+
+    <div id="revList" class="rev-list"></div>
+
+    <div class="rev-sim-row">
+      <button class="rev-sim" type="button" onclick="simFillPass()">一键填标准答案(达标)</button>
+      <button class="rev-sim" type="button" onclick="simFillMiss()">模拟审美品位不达标</button>
+      <button class="rev-sim" type="button" onclick="simLocFail()">测：定位失败补填</button>
+      <button class="rev-sim" type="button" onclick="resetAll()">重置全程</button>
+    </div>
+
+    <pre id="specJson" class="rev-json"></pre>
+  </aside>
+</div>
+
+<script>
+/* ===== 1. Hidden Aesthetic Standard Test (Each Question Has Hidden Standard Answer!) ===== */
+const AESTHETIC_QUESTIONS = [
+  {
+    id: "aes_1",
+    idx: 0,
+    tagKey: "aes_stitch_neat",
+    tagName: "审美·工整",
+    title: "请选择更为工整的作品",
+    lead: "看两件织片的针脚与行距，选你觉得更工整的一件",
+    voice: "请看图里两件作品，哪一件针脚更整齐、更工整？点选作品 A 或作品 B，再点下一步。",
+    artA: "neat_good",
+    artB: "neat_bad",
+    standardAns: 0 /* 隐藏标准答案：作品 A */
+  },
+  {
+    id: "aes_2",
+    idx: 1,
+    tagKey: "aes_fill_plump",
+    tagName: "审美·饱满",
+    title: "请选择更为饱满的作品",
+    lead: "看两只小蘑菇的充棉外形，选更饱满圆润的一件",
+    voice: "请看图里两只小蘑菇，哪一只充棉更饱满、形体更圆润？选好点下一步。",
+    artA: "plump_bad",
+    artB: "plump_good",
+    standardAns: 1 /* 隐藏标准答案：作品 B */
+  },
+  {
+    id: "aes_3",
+    idx: 2,
+    tagKey: "aes_harmony",
+    tagName: "审美·协调",
+    title: "请选择更为协调的作品",
+    lead: "看两件玩偶的配色与五官比例，选更耐看协调的一件",
+    voice: "请看图里两只小熊，哪一只配色和五官比例更协调、更好看？选好点下一步。",
+    artA: "harmony_good",
+    artB: "harmony_bad",
+    standardAns: 0 /* 隐藏标准答案：作品 A */
+  }
+];
+
+/* ===== 2. Market Price Questions (Each Question Has Hidden Standard Answer!) ===== */
+const PRICE_QUESTIONS = [
+  {
+    id: "price_1",
+    idx: 0,
+    tagKey: "price_small",
+    tagName: "估价·挂件",
+    art: "mushroom_keychain",
+    name: "基础小挂件 · 小蘑菇钥匙扣",
+    spec: "高约 6cm · 4股棉 · 约40分钟",
+    opts: ["15元以内", "20–35元", "45–68元", "80元以上"],
+    standardAns: 1 /* 隐藏标准答案：20–35元 */
+  },
+  {
+    id: "price_2",
+    idx: 1,
+    tagKey: "price_medium",
+    tagName: "估价·中件",
+    art: "bear_doll",
+    name: "精细小摆件 · 换色小熊玩偶",
+    spec: "高约 12cm · 配件拼缝 · 约2.5小时",
+    opts: ["30元以内", "45–75元", "85–130元", "160元以上"],
+    standardAns: 2 /* 隐藏标准答案：85–130元 */
+  },
+  {
+    id: "price_3",
+    idx: 2,
+    tagKey: "price_large",
+    tagName: "估价·大件",
+    art: "dressed_doll",
+    name: "复杂大件 · 带衣帽手工玩偶",
+    spec: "高约 22cm · 衣服可穿脱 · 约6小时",
+    opts: ["60元以内", "80–120元", "150–240元", "300元以上"],
+    standardAns: 2 /* 隐藏标准答案：150–240元 */
+  }
+];
+
+const STITCHES = [
+  { r: "第 1 圈", t: "红线环起 6 短针" },
+  { r: "第 2 圈", t: "每针加 1，共 12 针" },
+  { r: "第 3 圈", t: "隔 1 加 1，共 18 针" },
+  { r: "第 4 圈", t: "换奶白线，钩 18 针" },
+  { r: "第 5 圈", t: "减针塞棉，藏好线头" }
+];
+
+const YARNS_12 = [
+  { n: "奶白", c: "#FAF8F3" }, { n: "燕麦", c: "#E6DAC7" }, { n: "焦糖", c: "#B47449" }, { n: "樱粉", c: "#EBB7BE" },
+  { n: "茜红", c: "#B85542" }, { n: "鹅黄", c: "#EED27E" }, { n: "豆绿", c: "#7B9C87" }, { n: "雾蓝", c: "#88A4B8" },
+  { n: "灰紫", c: "#AEA0B8" }, { n: "浅灰", c: "#C5C7CC" }, { n: "深咖", c: "#5A4438" }, { n: "炭黑", c: "#2B2D33" }
+];
+
+/* 28 Focused Screens — ZERO Failure / Rejection Screens */
+const SCREENS = [
+  { id: "wx_login",       label: "0-0 同意微信登录",            macro: 0, sub: 0.16, stage: "wx_auth" },
+  { id: "welcome",        label: "0-1 首页 · 平台简介",         macro: 0, sub: 0.34, stage: "intro" },
+  { id: "deposit_notice", label: "1. 200元保证金说明",          macro: 0, sub: 0.56, stage: "deposit_ack" },
+  { id: "addr_fallback",  label: "2-0 补填地址（定位失败兜底）", macro: 0, sub: 0.78, stage: "contact" },
+  { id: "bind_phone",     label: "2-1 绑定手机号",              macro: 0, sub: 1.00, stage: "contact" },
+  { id: "aes_1",          label: "3-1 审美：更工整（暗标）",     macro: 1, sub: 0.10, stage: "hidden_eval" },
+  { id: "aes_2",          label: "3-2 审美：更饱满（暗标）",     macro: 1, sub: 0.20, stage: "hidden_eval" },
+  { id: "aes_3",          label: "3-3 审美：更协调（暗标）",     macro: 1, sub: 0.30, stage: "hidden_eval" },
+  { id: "experience",     label: "4-1 有无接单经历（暗标）",     macro: 1, sub: 0.40, stage: "hidden_eval" },
+  { id: "price_1",        label: "4-2 样品估价 1/3（暗标）",    macro: 1, sub: 0.50, stage: "hidden_eval" },
+  { id: "price_2",        label: "4-3 样品估价 2/3（暗标）",    macro: 1, sub: 0.60, stage: "hidden_eval" },
+  { id: "price_3",        label: "4-4 样品估价 3/3（暗标）",    macro: 1, sub: 0.68, stage: "hidden_eval" },
+  { id: "order_proof",    label: "4-5 接单截图凭证",            macro: 1, sub: 0.76, stage: "hidden_eval" },
+  { id: "p1",             label: "4-6 作品照：正面",            macro: 1, sub: 0.84, stage: "hidden_eval" },
+  { id: "p2",             label: "4-7 作品照：针脚",            macro: 1, sub: 0.90, stage: "hidden_eval" },
+  { id: "p3",             label: "4-8 作品照：背面",            macro: 1, sub: 0.95, stage: "hidden_eval" },
+  { id: "wait_1",         label: "4-9 等初审通知（静默分流）",   macro: 1, sub: 1.00, stage: "wait_eval" },
+  { id: "test_guide",     label: "5-1 钩织测试题（暗标过线）",   macro: 2, sub: 0.25, stage: "trial_test" },
+  { id: "t1",             label: "5-2 测试照：正面附尺",         macro: 2, sub: 0.50, stage: "trial_test" },
+  { id: "t2",             label: "5-3 测试照：背面收口",         macro: 2, sub: 0.72, stage: "trial_test" },
+  { id: "t3",             label: "5-4 测试照：侧面饱满",         macro: 2, sub: 0.88, stage: "trial_test" },
+  { id: "wait_2",         label: "5-5 等测试通知（静默分流）",   macro: 2, sub: 1.00, stage: "wait_trial" },
+  { id: "ship_addr",      label: "6-1 寄送作品地址",            macro: 3, sub: 0.35, stage: "ship_sample" },
+  { id: "ship_no",        label: "6-2 扫/填快递单号",           macro: 3, sub: 0.70, stage: "ship_sample" },
+  { id: "wait_3",         label: "6-3 等实物查收（静默分流）",   macro: 3, sub: 1.00, stage: "wait_sample" },
+  { id: "bind_id",        label: "7-1 绑定身份证",              macro: 4, sub: 0.40, stage: "final_onboard" },
+  { id: "deposit_pay",    label: "7-2 缴纳 200 元保证金",       macro: 4, sub: 0.75, stage: "final_onboard" },
+  { id: "approved",       label: "8. 正式开启接单",             macro: 4, sub: 1.00, stage: "active_weaver" }
+];
+
+const POOL_MODES = [
+  { id: "auto",       name: "按答题自动判定" },
+  { id: "silent_out", name: "强测:未达线" },
+  { id: "reserve",    name: "强测:储备库" },
+  { id: "priority",   name: "强测:优先库" }
+];
+
+const state = {
+  view: "wx_login",
+  wxAgreed: false,
+  wxUserId: "usr_w_8942",
+  depositAccepted: false,
+  locFailed: false,
+  locationSource: "auto_gps",
+  weaverAddr: "浙江省杭州市滨江区西兴街道",
+  phone: "",
+  phoneSource: "",
+  aesAns: {},                 // { 0: 0|1, 1: 0|1, 2: 0|1 }
+  hasExperience: null,        // true | false | null
+  priceAns: {},               // { 0: idx, 1: idx, 2: idx }
+  orderProofUploaded: false,
+  pPhotos: [false, false, false],
+  stitchIdx: 0,
+  tPhotos: [false, false, false],
+  trackingNo: "",
+  idBound: false,
+  idName: "",
+  idNumberMasked: "",
+  depositPaid: false,
+  poolMode: "auto",           // "auto" | "silent_out" | "reserve" | "priority"
+  speaking: false
+};
+
+/* ===== Clean 1.7px Stroke Icons ===== */
+const ICO = {
+  check: (s = 14) => `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>`,
+  cross: (s = 14) => `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M7 7l10 10M17 7L7 17"/></svg>`,
+  speaker: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5L6 9H3v6h3l5 4V5z"/><path d="M15.5 8.5a4.5 4.5 0 010 7"/></svg>`,
+  camera: `<svg width="32" height="32" viewBox="0 0 36 36" fill="none" aria-hidden="true"><rect x="4.5" y="9.5" width="27" height="20" rx="4.5" stroke="var(--brand)" stroke-width="1.7"/><path d="M12.5 9.5l2-3.5h7l2 3.5" stroke="var(--brand)" stroke-width="1.7" stroke-linejoin="round"/><circle cx="18" cy="19.5" r="5.2" fill="var(--brand-soft)" stroke="var(--brand)" stroke-width="1.7"/><circle cx="26.5" cy="14" r="1.2" fill="var(--brand)"/></svg>`,
+  scan: `<svg width="32" height="32" viewBox="0 0 36 36" fill="none" aria-hidden="true"><path d="M6 12V7.5A1.5 1.5 0 017.5 6H12M30 12V7.5A1.5 1.5 0 0028.5 6H24M6 24v4.5A1.5 1.5 0 007.5 30H12M30 24v4.5a1.5 1.5 0 01-1.5 1.5H24" stroke="var(--brand)" stroke-width="1.8" stroke-linecap="round"/><path d="M11 12v12M15 12v12M19.5 12v12M22.5 12v12M25.5 12v12" stroke="var(--ink)" stroke-width="1.5" stroke-linecap="round"/><line x1="8" y1="18" x2="28" y2="18" stroke="var(--brand)" stroke-width="1.8" stroke-linecap="round"/></svg>`,
+  coin: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9 8.5l3 3 3-3M9 12.5h6M9 15.5h6M12 11.5v6"/></svg>`,
+  yarn: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M5.5 9.5c4.2-2 8.8-2 13 0M5 14c5-1.2 9.5-.5 14 1.5M8.5 19c3.5-3 6.8-6 9-11"/></svg>`,
+  pin: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s7-5.6 7-11a7 7 0 10-14 0c0 5.4 7 11 7 11z"/><circle cx="12" cy="10" r="2.5"/></svg>`,
+  phone: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="2.5" width="12" height="19" rx="2.5"/><line x1="10" y1="18" x2="14" y2="18"/></svg>`,
+  idCard: `<svg width="32" height="32" viewBox="0 0 36 36" fill="none" aria-hidden="true"><rect x="4" y="8" width="28" height="20" rx="3.5" stroke="var(--brand)" stroke-width="1.7" fill="var(--brand-soft)"/><circle cx="12.5" cy="16" r="2.8" stroke="var(--brand)" stroke-width="1.6" fill="#FFF"/><path d="M8.5 23c.8-2.2 2.2-3.2 4-3.2s3.2 1 4 3.2" stroke="var(--brand)" stroke-width="1.6" stroke-linecap="round"/><path d="M20 14h8M20 18.5h8M20 22.5h5" stroke="var(--brand)" stroke-width="1.6" stroke-linecap="round"/></svg>`,
+  receipt: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 3h14v18l-2.5-1.5L14 21l-2-1.5L10 21l-2.5-1.5L5 21V3z"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>`,
+  spark: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8.5 12.5l2.3 2.3 4.8-5"/></svg>`,
+  shield: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 3.2v5.8c0 5-3.4 8.2-8 9.5-4.6-1.3-8-4.5-8-9.5V6.2L12 3z"/><path d="M8.8 12.2l2.2 2.2 4.5-4.6"/></svg>`,
+  refund: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9h11a5 5 0 010 10H8"/><path d="M8 5L4 9l4 4"/></svg>`,
+  copy: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>`,
+  info: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>`,
+  wxBubble: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.5 4.5c4.2 0 7.5 2.7 7.5 6s-3.3 6-7.5 6c-.9 0-1.8-.1-2.6-.4L4 17.5l.8-2.4C3.1 13.9 2 12.3 2 10.5c0-3.3 3.3-6 7.5-6z"/><path d="M15.8 10.8c3.4.3 6.2 2.4 6.2 5.1 0 1.4-.8 2.8-2.1 3.7l.6 1.9-2.2-1.1c-.7.2-1.4.3-2.2.3-2.8 0-5.2-1.4-6-3.4"/></svg>`
+};
+
+function radioHtml() {
+  return `<span class="weui-radio" aria-hidden="true">${ICO.check(12)}</span>`;
+}
+
+/* ===== Audio Guide ===== */
+function speakText(event, text) {
+  if (event) event.stopPropagation();
+  if (state.speaking) { closeVoicePop(); return; }
+  state.speaking = true;
+  updateSpeakUi();
+  clearTimeout(speakText._timer);
+  if (typeof window !== "undefined" && "speechSynthesis" in window) {
+    try {
+      window.speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = "zh-CN";
+      u.rate = 0.9;
+      u.onend = () => closeVoicePop();
+      u.onerror = () => { clearTimeout(speakText._timer); speakText._timer = setTimeout(() => closeVoicePop(), 2600); };
+      window.speechSynthesis.speak(u);
+      speakText._timer = setTimeout(() => closeVoicePop(), 6500);
+      return;
+    } catch (_) {}
+  }
+  speakText._timer = setTimeout(() => closeVoicePop(), 2600);
+}
+function closeVoicePop() {
+  clearTimeout(speakText._timer);
+  if (typeof window !== "undefined" && "speechSynthesis" in window) {
+    try { window.speechSynthesis.cancel(); } catch (_) {}
+  }
+  state.speaking = false;
+  updateSpeakUi();
+}
+function updateSpeakUi() {
+  const b = document.getElementById("speakBtn");
+  const p = document.getElementById("voicePop");
+  if (b) { b.classList.toggle("speaking", state.speaking); b.setAttribute("aria-expanded", String(state.speaking)); }
+  if (p) p.classList.toggle("open", state.speaking);
+}
+function handlePhoneOutsideClick(e) {
+  if (!state.speaking) return;
+  const wrap = document.querySelector(".speak-wrap");
+  if (wrap && !wrap.contains(e.target)) closeVoicePop();
+}
+function speakBtnHtml(text) {
+  const safe = String(text).replace(/'/g, "");
+  const preview = safe.length > 28 ? safe.slice(0, 28) + "…" : safe;
+  return `<div class="speak-wrap">
+    <button id="speakBtn" type="button" class="speak-btn ${state.speaking ? "speaking" : ""}" aria-label="听一遍本页说明" aria-expanded="${state.speaking}" onclick="speakText(event, '${safe}')">${ICO.speaker}<span>听一遍</span></button>
+    <div id="voicePop" class="voice-pop ${state.speaking ? "open" : ""}" role="status"><span>${preview}</span></div>
+  </div>`;
+}
+
+function showToast(msg, kind = "ok") {
+  const el = document.getElementById("toast");
+  const ico = kind === "warn" ? `<span style="color:#FCD34D;display:inline-flex;">${ICO.info}</span>` : `<span style="color:#86EFAC;display:inline-flex;">${ICO.check(14)}</span>`;
+  el.innerHTML = `${ico}<span>${msg}</span>`;
+  el.classList.add("show");
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => el.classList.remove("show"), kind === "warn" ? 2400 : 1800);
+}
+
+function nudgeTarget(selector, msg) {
+  showToast(msg, "warn");
+  const el = document.querySelector(selector);
+  if (!el) return;
+  el.classList.remove("nudge-attn");
+  void el.offsetWidth;
+  el.classList.add("nudge-attn");
+  if (typeof el.focus === "function") el.focus({ preventScroll: true });
+  setTimeout(() => el.classList.remove("nudge-attn"), 900);
+}
+
+function detectCarrier(v) {
+  const s = String(v || "").trim().toUpperCase();
+  if (s.startsWith("SF")) return "顺丰速运";
+  if (s.startsWith("ZTO") || /^7[358]\d{10,}$/.test(s)) return "中通快递";
+  if (s.startsWith("YT")) return "圆通速递";
+  if (s.startsWith("JT")) return "极兔速递";
+  return "";
+}
+
+/* ===== Aesthetic Comparison SVGs (Clean, Unambiguous Craft Differences) ===== */
+function aesArtSvg(kind) {
+  if (kind === "neat_good") {
+    /* Even tight X-stitches aligned in neat rows */
+    return `<svg width="144" height="156" viewBox="0 0 144 156" fill="none" aria-hidden="true">
+      <rect x="16" y="20" width="112" height="116" rx="14" fill="#F2E7D8" stroke="#9C846B" stroke-width="1.6"/>
+      <g stroke="#6E553D" stroke-width="2" stroke-linecap="round">
+        <path d="M30 40l10 10m0-10l-10 10M50 40l10 10m0-10l-10 10M70 40l10 10m0-10l-10 10M90 40l10 10m0-10l-10 10M106 40l10 10m0-10l-10 10"/>
+        <path d="M30 64l10 10m0-10l-10 10M50 64l10 10m0-10l-10 10M70 64l10 10m0-10l-10 10M90 64l10 10m0-10l-10 10M106 64l10 10m0-10l-10 10"/>
+        <path d="M30 88l10 10m0-10l-10 10M50 88l10 10m0-10l-10 10M70 88l10 10m0-10l-10 10M90 88l10 10m0-10l-10 10M106 88l10 10m0-10l-10 10"/>
+        <path d="M30 110l10 10m0-10l-10 10M50 110l10 10m0-10l-10 10M70 110l10 10m0-10l-10 10M90 110l10 10m0-10l-10 10M106 110l10 10m0-10l-10 10"/>
+      </g>
+    </svg>`;
+  }
+  if (kind === "neat_bad") {
+    /* Uneven loose stitches, wobbly edge & cotton showing through holes */
+    return `<svg width="144" height="156" viewBox="0 0 144 156" fill="none" aria-hidden="true">
+      <path d="M20 24c32-7 68 8 104-3 5 36-8 76 2 112-34 7-74-8-108 2 6-38-6-75 2-111z" fill="#EADBC8" stroke="#9C846B" stroke-width="1.6"/>
+      <circle cx="52" cy="56" r="10" fill="#FFFFFF" stroke="#B69B7F" stroke-width="1.3"/>
+      <circle cx="96" cy="78" r="11" fill="#FFFFFF" stroke="#B69B7F" stroke-width="1.3"/>
+      <circle cx="64" cy="108" r="9" fill="#FFFFFF" stroke="#B69B7F" stroke-width="1.3"/>
+      <g stroke="#7C624A" stroke-width="1.8" stroke-linecap="round">
+        <path d="M32 38l14 7m-4-11l-7 13M74 34l8 15m4-12l-13 6M104 42l12 9"/>
+        <path d="M30 82l16 6M70 64l10 14M40 118l11 9M92 108l16 10"/>
+      </g>
+    </svg>`;
+  }
+  if (kind === "plump_good") {
+    /* Symmetrical plump dome mushroom standing upright */
+    return `<svg width="144" height="156" viewBox="0 0 144 156" fill="none" aria-hidden="true">
+      <ellipse cx="72" cy="134" rx="34" ry="7" fill="rgba(17,24,39,0.06)"/>
+      <path d="M26 84c0-52 92-52 92 0z" fill="#B85542" stroke="#7A3124" stroke-width="1.8" stroke-linejoin="round"/>
+      <circle cx="52" cy="60" r="6" fill="#FFF" fill-opacity="0.92"/>
+      <circle cx="88" cy="56" r="5" fill="#FFF" fill-opacity="0.92"/>
+      <circle cx="98" cy="72" r="4" fill="#FFF" fill-opacity="0.92"/>
+      <rect x="49" y="84" width="46" height="48" rx="16" fill="#F4EDE2" stroke="#8C7B6B" stroke-width="1.8"/>
+    </svg>`;
+  }
+  if (kind === "plump_bad") {
+    /* Sunken flat lumpy mushroom leaning sideways */
+    return `<svg width="144" height="156" viewBox="0 0 144 156" fill="none" aria-hidden="true">
+      <ellipse cx="74" cy="134" rx="38" ry="6" fill="rgba(17,24,39,0.06)"/>
+      <path d="M24 90c12-22 28-8 46-24 18 14 34-4 50 22-32 7-64 8-96 2z" fill="#B85542" stroke="#7A3124" stroke-width="1.8" stroke-linejoin="round"/>
+      <circle cx="58" cy="77" r="4" fill="#FFF" fill-opacity="0.8"/>
+      <circle cx="94" cy="78" r="3.5" fill="#FFF" fill-opacity="0.8"/>
+      <path d="M55 90l-10 42c16 4 38 3 52-2l-7-40z" fill="#F4EDE2" stroke="#8C7B6B" stroke-width="1.8" stroke-linejoin="round"/>
+      <path d="M60 108c9 3 16 1 24-3" stroke="#C4B5A3" stroke-width="1.5" stroke-linecap="round"/>
+    </svg>`;
+  }
+  if (kind === "harmony_good") {
+    /* Balanced warm bear with centered eyes & harmonious soft scarf */
+    return `<svg width="144" height="156" viewBox="0 0 144 156" fill="none" aria-hidden="true">
+      <circle cx="48" cy="36" r="11" fill="#C98A5B" stroke="#7A4C2C" stroke-width="1.6"/>
+      <circle cx="96" cy="36" r="11" fill="#C98A5B" stroke="#7A4C2C" stroke-width="1.6"/>
+      <circle cx="72" cy="58" r="28" fill="#D49A6A" stroke="#7A4C2C" stroke-width="1.6"/>
+      <ellipse cx="72" cy="65" rx="11" ry="8.5" fill="#F6EFE6"/>
+      <circle cx="61" cy="54" r="2.6" fill="#1D2B4A"/>
+      <circle cx="83" cy="54" r="2.6" fill="#1D2B4A"/>
+      <ellipse cx="72" cy="62" rx="3.4" ry="2.4" fill="#5A4438"/>
+      <rect x="48" y="84" width="48" height="48" rx="18" fill="#293B63" stroke="#1D2B4A" stroke-width="1.6"/>
+      <rect x="46" y="81" width="52" height="11" rx="5.5" fill="#E6DAC7" stroke="#A69681" stroke-width="1.3"/>
+    </svg>`;
+  }
+  /* harmony_bad: Clashing neon colors + crooked uneven eyes & tiny lop-sided ears */
+  return `<svg width="144" height="156" viewBox="0 0 144 156" fill="none" aria-hidden="true">
+    <circle cx="44" cy="40" r="15" fill="#D946EF" stroke="#86198F" stroke-width="1.6"/>
+    <circle cx="98" cy="30" r="7" fill="#D946EF" stroke="#86198F" stroke-width="1.6"/>
+    <circle cx="72" cy="60" r="28" fill="#FACC15" stroke="#A16207" stroke-width="1.6"/>
+    <ellipse cx="77" cy="70" rx="13" ry="7" fill="#A3E635"/>
+    <circle cx="56" cy="49" r="5" fill="#111827"/>
+    <circle cx="86" cy="59" r="2.2" fill="#111827"/>
+    <ellipse cx="78" cy="69" rx="5" ry="2.2" fill="#DC2626"/>
+    <rect x="52" y="86" width="42" height="44" rx="12" fill="#22C55E" stroke="#15803D" stroke-width="1.6"/>
+    <rect x="44" y="82" width="58" height="13" rx="4" fill="#EF4444"/>
+  </svg>`;
+}
+
+function welcomeArtSvg() {
+  return `<svg width="316" height="150" viewBox="0 0 316 156" fill="none" aria-hidden="true">
+    <rect x="18" y="12" width="280" height="132" rx="12" fill="var(--bg)" stroke="var(--line)"/>
+    <line x1="18" y1="118" x2="298" y2="118" stroke="var(--line-strong)" stroke-width="1"/>
+    <circle cx="92" cy="92" r="24" fill="var(--brand-soft)" stroke="var(--brand)" stroke-width="1.6"/>
+    <path d="M72 85c13-6 27-6 40 0M69 95c14-3 29-2 45 3M80 112c10-9 19-17 25-32" stroke="var(--brand)" stroke-opacity="0.55" stroke-width="1.4" stroke-linecap="round"/>
+    <path d="M64 48l64 64" stroke="#6E5849" stroke-width="3.5" stroke-linecap="round"/>
+    <path d="M142 82c0-30 60-30 60 0z" fill="#B85542" stroke="#7A3124" stroke-width="1.6"/>
+    <circle cx="160" cy="66" r="4" fill="#FFF" fill-opacity="0.92"/>
+    <circle cx="182" cy="64" r="3.2" fill="#FFF" fill-opacity="0.92"/>
+    <rect x="158" y="82" width="28" height="34" rx="9" fill="#F4EDE2" stroke="#8C7B6B" stroke-width="1.6"/>
+    <rect x="218" y="56" width="60" height="60" rx="8" fill="var(--card)" stroke="var(--line-strong)" stroke-width="1.4"/>
+    <circle cx="248" cy="76" r="9.5" fill="var(--ok-soft)" stroke="var(--ok)" stroke-width="1.4"/>
+    <path d="M244 76l2.6 2.6 4.8-5" stroke="var(--ok)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+    <line x1="230" y1="95" x2="266" y2="95" stroke="var(--brand)" stroke-width="2" stroke-linecap="round"/>
+    <line x1="235" y1="104" x2="261" y2="104" stroke="var(--stitch)" stroke-width="1.6" stroke-linecap="round"/>
+  </svg>`;
+}
+
+function sampleArtSvg(kind) {
+  if (kind === "mushroom_keychain") {
+    return `<svg width="260" height="118" viewBox="0 0 260 118" fill="none" aria-hidden="true">
+      <circle cx="130" cy="18" r="7" stroke="#8590A6" stroke-width="1.8"/>
+      <line x1="130" y1="25" x2="130" y2="38" stroke="#8590A6" stroke-width="1.8"/>
+      <path d="M96 68c0-32 68-32 68 0z" fill="#B85542" stroke="#7A3124" stroke-width="1.6"/>
+      <circle cx="116" cy="52" r="4.5" fill="#FFF"/><circle cx="141" cy="49" r="3.5" fill="#FFF"/><circle cx="148" cy="60" r="2.8" fill="#FFF"/>
+      <rect x="115" y="68" width="30" height="32" rx="10" fill="#F4EDE2" stroke="#8C7B6B" stroke-width="1.6"/>
+      <line x1="70" y1="38" x2="70" y2="100" stroke="var(--stitch)" stroke-width="1.3" stroke-dasharray="3 3"/>
+      <text x="58" y="73" text-anchor="end" font-size="12" fill="var(--ink-sub)">6cm</text>
+    </svg>`;
+  }
+  if (kind === "bear_doll") {
+    return `<svg width="260" height="118" viewBox="0 0 260 118" fill="none" aria-hidden="true">
+      <circle cx="109" cy="27" r="9" fill="#B47449" stroke="#7A4C2C" stroke-width="1.5"/>
+      <circle cx="151" cy="27" r="9" fill="#B47449" stroke="#7A4C2C" stroke-width="1.5"/>
+      <circle cx="130" cy="44" r="22" fill="#C98A5B" stroke="#7A4C2C" stroke-width="1.6"/>
+      <ellipse cx="130" cy="49" rx="9" ry="7" fill="#F4EDE2"/>
+      <circle cx="122" cy="41" r="2" fill="#1D2B4A"/><circle cx="138" cy="41" r="2" fill="#1D2B4A"/>
+      <ellipse cx="130" cy="47" rx="3" ry="2" fill="#5A4438"/>
+      <rect x="111" y="64" width="38" height="36" rx="14" fill="#293B63" stroke="#1D2B4A" stroke-width="1.6"/>
+      <path d="M111 72l-12 12M149 72l12 12" stroke="#C98A5B" stroke-width="8" stroke-linecap="round"/>
+      <line x1="70" y1="20" x2="70" y2="102" stroke="var(--stitch)" stroke-width="1.3" stroke-dasharray="3 3"/>
+      <text x="58" y="64" text-anchor="end" font-size="12" fill="var(--ink-sub)">12cm</text>
+    </svg>`;
+  }
+  return `<svg width="260" height="118" viewBox="0 0 260 118" fill="none" aria-hidden="true">
+    <path d="M104 34c4-18 48-18 52 0z" fill="#7B9C87" stroke="#466350" stroke-width="1.5"/>
+    <circle cx="130" cy="44" r="18" fill="#F4EDE2" stroke="#8C7B6B" stroke-width="1.5"/>
+    <circle cx="123" cy="43" r="1.8" fill="#1D2B4A"/><circle cx="137" cy="43" r="1.8" fill="#1D2B4A"/>
+    <path d="M110 62h40l9 38h-58l9-38z" fill="#EBB7BE" stroke="#A66B74" stroke-width="1.5" stroke-linejoin="round"/>
+    <path d="M118 62l12 9 12-9" stroke="#FFFFFF" stroke-width="2" fill="none"/>
+    <line x1="120" y1="100" x2="120" y2="110" stroke="#8C7B6B" stroke-width="5" stroke-linecap="round"/>
+    <line x1="140" y1="100" x2="140" y2="110" stroke="#8C7B6B" stroke-width="5" stroke-linecap="round"/>
+    <line x1="68" y1="18" x2="68" y2="110" stroke="var(--stitch)" stroke-width="1.3" stroke-dasharray="3 3"/>
+    <text x="56" y="68" text-anchor="end" font-size="12" fill="var(--ink-sub)">22cm</text>
+  </svg>`;
+}
+
+function svgGuide(kind, ok) {
+  if (kind === "proof") {
+    return ok
+      ? `<svg class="guide-svg" viewBox="0 0 160 106" aria-hidden="true"><rect width="160" height="106" fill="#F9FAFB"/><rect x="34" y="14" width="92" height="78" rx="8" fill="#FFF" stroke="var(--ok)" stroke-width="1.5"/><rect x="44" y="26" width="52" height="12" rx="4" fill="var(--ok-soft)"/><rect x="64" y="46" width="52" height="12" rx="4" fill="var(--brand-soft)"/><text x="80" y="78" text-anchor="middle" font-size="12" font-weight="600" fill="var(--ok)">接单 / 转账记录</text></svg>`
+      : `<svg class="guide-svg" viewBox="0 0 160 106" aria-hidden="true"><rect width="160" height="106" fill="#F9FAFB"/><rect x="34" y="14" width="92" height="78" rx="8" fill="#F1F5F9" stroke="var(--bad)" stroke-width="1.5"/><line x1="48" y1="36" x2="112" y2="72" stroke="var(--bad)" stroke-width="2"/><text x="80" y="60" text-anchor="middle" font-size="12" fill="var(--ink-sub)">网图 / 模糊截屏</text></svg>`;
+  }
+  if (kind === "p_front") {
+    return ok
+      ? `<svg class="guide-svg" viewBox="0 0 160 106" aria-hidden="true"><rect width="160" height="106" fill="#F9FAFB"/><circle cx="134" cy="22" r="9" fill="#EAB308" fill-opacity="0.85"/><circle cx="80" cy="45" r="16" fill="#EFE2D2" stroke="#786452" stroke-width="1.5"/><ellipse cx="80" cy="73" rx="16" ry="13" fill="#B85542" stroke="#7A3124" stroke-width="1.5"/></svg>`
+      : `<svg class="guide-svg" viewBox="0 0 160 106" aria-hidden="true"><rect width="160" height="106" fill="#C9A25F"/><circle cx="134" cy="22" r="12" fill="#FDE68A" fill-opacity="0.7"/><circle cx="82" cy="49" r="15" fill="#9E7638" opacity="0.7"/><ellipse cx="82" cy="75" rx="15" ry="12" fill="#854A27" opacity="0.7"/></svg>`;
+  }
+  if (kind === "p_stitch") {
+    return ok
+      ? `<svg class="guide-svg" viewBox="0 0 160 106" aria-hidden="true"><rect width="160" height="106" fill="#F9FAFB"/><rect x="20" y="19" width="120" height="68" rx="10" fill="#F2E7D8" stroke="var(--ok)" stroke-width="1.5"/><g stroke="#7C624A" stroke-width="1.8" stroke-linecap="round"><path d="M34 37l9 9m0-9l-9 9M56 37l9 9m0-9l-9 9M78 37l9 9m0-9l-9 9M100 37l9 9m0-9l-9 9M118 37l9 9m0-9l-9 9"/><path d="M34 59l9 9m0-9l-9 9M56 59l9 9m0-9l-9 9M78 59l9 9m0-9l-9 9M100 59l9 9m0-9l-9 9M118 59l9 9m0-9l-9 9"/></g></svg>`
+      : `<svg class="guide-svg" viewBox="0 0 160 106" aria-hidden="true"><rect width="160" height="106" fill="#F9FAFB"/><rect x="20" y="19" width="120" height="68" rx="10" fill="#EADBC8" stroke="var(--bad)" stroke-width="1.5"/><circle cx="56" cy="49" r="11" fill="#FFF" stroke="#A38466" stroke-width="1.4"/><circle cx="100" cy="45" r="10" fill="#FFF" stroke="#A38466" stroke-width="1.4"/><circle cx="80" cy="67" r="9" fill="#FFF" stroke="#A38466" stroke-width="1.4"/></svg>`;
+  }
+  if (kind === "back") {
+    return ok
+      ? `<svg class="guide-svg" viewBox="0 0 160 106" aria-hidden="true"><rect width="160" height="106" fill="#F9FAFB"/><ellipse cx="80" cy="53" rx="36" ry="29" fill="#B85542" stroke="#7A3124" stroke-width="1.5"/><rect x="46" y="53" width="68" height="27" rx="12" fill="#F4EDE2" stroke="#8C7B6B" stroke-width="1.4"/><line x1="48" y1="54" x2="112" y2="54" stroke="var(--ok)" stroke-width="2"/></svg>`
+      : `<svg class="guide-svg" viewBox="0 0 160 106" aria-hidden="true"><rect width="160" height="106" fill="#F9FAFB"/><ellipse cx="80" cy="53" rx="36" ry="29" fill="#B85542" stroke="#7A3124" stroke-width="1.5"/><path d="M46 53h68v22q-34 9-68 0z" fill="#F4EDE2" stroke="#8C7B6B" stroke-width="1.4"/><path d="M84 55c20-8 34 10 52-12" fill="none" stroke="#7A3124" stroke-width="2.4" stroke-linecap="round"/><circle cx="84" cy="55" r="4.5" fill="var(--bad)"/></svg>`;
+  }
+  if (kind === "t_front") {
+    return ok
+      ? `<svg class="guide-svg" viewBox="0 0 160 106" aria-hidden="true"><rect width="160" height="106" fill="#F9FAFB"/><rect x="18" y="15" width="124" height="76" rx="6" fill="#FFF" stroke="#CBD5E1" stroke-width="1.4"/><line x1="26" y1="81" x2="134" y2="81" stroke="#334155" stroke-width="1.5"/><path d="M32 81v-6M56 81v-6M80 81v-6M104 81v-6M128 81v-6" stroke="#334155" stroke-width="1.4"/><path d="M52 51c0-24 56-24 56 0z" fill="#B85542"/><rect x="67" y="51" width="26" height="22" rx="8" fill="#F4EDE2" stroke="#8C7B6B" stroke-width="1.2"/></svg>`
+      : `<svg class="guide-svg" viewBox="0 0 160 106" aria-hidden="true"><rect width="160" height="106" fill="#C9A25F"/><g transform="translate(8,6) rotate(-16 80 53)"><path d="M54 51c0-22 52-22 52 0z" fill="#8C4227"/><rect x="68" y="51" width="24" height="20" rx="7" fill="#C2A370"/></g></svg>`;
+  }
+  return ok
+    ? `<svg class="guide-svg" viewBox="0 0 160 106" aria-hidden="true"><rect width="160" height="106" fill="#F9FAFB"/><path d="M50 53c0-28 60-28 60 0z" fill="#B85542"/><rect x="66" y="53" width="28" height="24" rx="9" fill="#F4EDE2" stroke="#8C7B6B" stroke-width="1.3"/><path d="M26 45h18m-4-4l4 4-4 4M134 45h-18m4-4l-4 4 4 4" stroke="var(--ok)" stroke-width="1.8" fill="none" stroke-linecap="round"/></svg>`
+    : `<svg class="guide-svg" viewBox="0 0 160 106" aria-hidden="true"><rect width="160" height="106" fill="#F9FAFB"/><path d="M48 55c9-14 23-3 34-15 11 14 21 3 32 15z" fill="#B85542"/><path d="M68 55l-5 24 34-2-6-22z" fill="#F4EDE2" stroke="#8C7B6B" stroke-width="1.3"/></svg>`;
+}
+
+function mushroomStageSvg(idx) {
+  const capDone = idx >= 2;
+  const stemDone = idx >= 3;
+  return `<svg width="42" height="42" viewBox="0 0 56 56" fill="none" aria-hidden="true" style="flex-shrink:0;">
+    <path d="M10 30c0-20 36-20 36 0z" fill="${capDone ? "#B85542" : "var(--brand-soft)"}" stroke="${capDone ? "#7A3124" : "var(--brand)"}" stroke-width="1.6"/>
+    ${capDone ? `<circle cx="22" cy="20" r="2.5" fill="#FFF"/><circle cx="34" cy="19" r="2" fill="#FFF"/>` : ""}
+    <rect x="19" y="30" width="18" height="18" rx="6" fill="${stemDone ? "#F4EDE2" : "var(--bg)"}" stroke="${stemDone ? "#8C7B6B" : "var(--stitch)"}" stroke-width="1.5"/>
+  </svg>`;
+}
+
+function calmBadgeSvg(done = false) {
+  if (done) {
+    return `<div class="badge-pop" aria-hidden="true"><svg width="56" height="56" viewBox="0 0 56 56" fill="none"><circle cx="28" cy="28" r="26" fill="var(--ok-soft)" stroke="var(--ok-line)" stroke-width="1.5"/><circle cx="28" cy="28" r="19" fill="var(--ok)"/><path d="M20 28.5l5.2 5.2L36.5 22.5" stroke="#FFFFFF" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>`;
+  }
+  return `<div class="badge-pop" aria-hidden="true"><svg width="56" height="56" viewBox="0 0 56 56" fill="none"><circle cx="28" cy="28" r="26" fill="var(--brand-soft)" stroke="var(--brand-line)" stroke-width="1.5"/><circle cx="28" cy="28" r="19" fill="var(--brand)"/><path d="M28 19v9l6 3.5" stroke="#FFFFFF" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></div>`;
+}
+
+/* ===== Hidden Tag & Standard-Answer Evaluation Engine (Backend Only) ===== */
+function evaluateHiddenCriteria() {
+  const tags = [];
+  let score = 0;
+  let aesPassedCount = 0;
+
+  AESTHETIC_QUESTIONS.forEach((q) => {
+    const a = state.aesAns[q.idx];
+    const status = a === undefined ? "pending" : a === q.standardAns ? "pass" : "miss";
+    if (status === "pass") { score += 16; aesPassedCount++; }
+    tags.push({ key: q.tagKey, label: q.tagName, status });
+  });
+
+  const expStatus = state.hasExperience === null ? "pending" : state.hasExperience ? "pass" : "miss";
+  if (state.hasExperience === true) score += 10;
+  tags.push({ key: "exp_commercial", label: "接单经历", status: expStatus });
+
+  PRICE_QUESTIONS.forEach((q) => {
+    const a = state.priceAns[q.idx];
+    const status = a === undefined ? "pending" : a === q.standardAns ? "pass" : "miss";
+    if (status === "pass") score += 10;
+    else if (a !== undefined && Math.abs(a - q.standardAns) === 1) score += 4;
+    tags.push({ key: q.tagKey, label: q.tagName, status });
+  });
+
+  const proofStatus = state.hasExperience === false ? "pending" : state.orderProofUploaded ? "pass" : "pending";
+  if (state.orderProofUploaded) score += 6;
+  tags.push({ key: "order_proof", label: "接单凭证", status: proofStatus });
+
+  const photosReady = state.pPhotos.every(Boolean);
+  if (photosReady) score += 6;
+  tags.push({ key: "portfolio_3", label: "作品3图", status: photosReady ? "pass" : "pending" });
+
+  let computedTier = "silent_out";
+  if (aesPassedCount === 3 && score >= 82) computedTier = "priority";
+  else if (aesPassedCount >= 2 && score >= 62) computedTier = "reserve";
+
+  const activeTier = state.poolMode === "auto" ? computedTier : state.poolMode;
+  return { tags, score, aesPassedCount, computedTier, activeTier };
+}
+
+function renderStageBar(meta, idx) {
+  const bar = document.getElementById("stageBar");
+  bar.setAttribute("aria-valuenow", String(idx + 1));
+  bar.innerHTML = [0, 1, 2, 3, 4].map((i) => {
+    const done = i < meta.macro;
+    const width = done ? 100 : i === meta.macro ? Math.round(meta.sub * 100) : 0;
+    return `<div class="stage-seg ${done ? "done" : ""}"><div class="stage-seg-fill" style="width:${width}%;"></div></div>`;
+  }).join("");
+}
+
+function renderAestheticScreen(q) {
+  const picked = state.aesAns[q.idx];
+  const dots = AESTHETIC_QUESTIONS.map((_, i) => {
+    const cls = i === q.idx ? "cur" : state.aesAns[i] !== undefined ? "done" : "";
+    return `<span class="s-dot ${cls}"></span>`;
+  }).join("");
+  return `
+    <div class="step-meta">
+      <div class="step-dots" aria-hidden="true">${dots}</div>
+      <span>看图挑品 ${q.idx + 1} / 3</span>
+    </div>
+    <div class="head-row">
+      <h1 class="h1">${q.title}</h1>
+      ${speakBtnHtml(q.voice)}
+    </div>
+    <p class="lead">${q.lead}</p>
+    <div id="aesGrid" class="aes-grid" role="radiogroup" aria-label="${q.title}">
+      <button type="button" role="radio" aria-checked="${picked === 0}" class="aes-card ${picked === 0 ? "selected" : ""}" onclick="pickAes(${q.idx}, 0)">
+        <span class="aes-art">${aesArtSvg(q.artA)}</span>
+        <span class="aes-foot"><span>作品 A</span>${radioHtml()}</span>
+      </button>
+      <button type="button" role="radio" aria-checked="${picked === 1}" class="aes-card ${picked === 1 ? "selected" : ""}" onclick="pickAes(${q.idx}, 1)">
+        <span class="aes-art">${aesArtSvg(q.artB)}</span>
+        <span class="aes-foot"><span>作品 B</span>${radioHtml()}</span>
+      </button>
+    </div>
+  `;
+}
+
+function renderPhotoScreen(opts) {
+  const done = opts.done;
+  return `
+    <div class="head-row">
+      <h1 class="h1">${opts.title}</h1>
+      ${speakBtnHtml(opts.title + "。" + opts.lead + "。要" + opts.good + "，不要" + opts.bad)}
+    </div>
+    <p class="lead">${opts.lead}</p>
+    <div class="guide-pair">
+      <div class="guide-box good">
+        <span class="guide-badge">${ICO.check(11)}<span>合格</span></span>
+        ${svgGuide(opts.guide, true)}
+        <div class="guide-lbl">${opts.good}</div>
+      </div>
+      <div class="guide-box bad">
+        <span class="guide-badge">${ICO.cross(11)}<span>不合格</span></span>
+        ${svgGuide(opts.guide, false)}
+        <div class="guide-lbl">${opts.bad}</div>
+      </div>
+    </div>
+    <button id="photoUploadBtn" type="button" class="upload-area ${done ? "done" : ""}" onclick="${opts.onTap}">
+      <span class="upload-inner">
+        ${done ? `<span class="badge-pop" style="width:34px;height:34px;border-radius:50%;background:var(--ok);display:flex;align-items:center;justify-content:center;color:#FFF;">${ICO.check(18)}</span>` : ICO.camera}
+        <span class="upload-title">${done ? "照片已选好" : opts.cta || "点击拍摄或上传照片"}</span>
+        <span class="upload-sub">${done ? "点击可重新选择" : opts.sub || "原图直传，请勿开启美颜滤镜"}</span>
+      </span>
+    </button>
+  `;
+}
+
+function renderPriceScreen(q) {
+  const picked = state.priceAns[q.idx];
+  const dots = PRICE_QUESTIONS.map((_, i) => {
+    const cls = i === q.idx ? "cur" : state.priceAns[i] !== undefined ? "done" : "";
+    return `<span class="s-dot ${cls}"></span>`;
+  }).join("");
+  return `
+    <div class="step-meta">
+      <div class="step-dots" aria-hidden="true">${dots}</div>
+      <span>样品估价 ${q.idx + 1} / 3</span>
+    </div>
+    <div class="head-row">
+      <h1 class="h1">这件成品大概卖多少钱？</h1>
+      ${speakBtnHtml("看看图里的" + q.name + "，按你的经验，平时市面上大概卖多少钱？选一个最接近的价位，点下一步。")}
+    </div>
+    <p class="lead" style="margin-bottom:10px;">凭经验选一个大概市价，选好后点下一步</p>
+    <div class="sample-card">
+      <div class="sample-art">
+        ${sampleArtSvg(q.art)}
+        <span class="sample-badge">${q.spec}</span>
+      </div>
+      <div class="sample-bar"><span class="sample-name">${q.name}</span></div>
+    </div>
+    <div id="priceGrid" class="grid-2" role="radiogroup" aria-label="选择样品市场价位">
+      ${q.opts.map((txt, oIdx) => {
+        const sel = picked === oIdx;
+        return `<button type="button" role="radio" aria-checked="${sel}" class="price-opt ${sel ? "selected" : ""}" onclick="pickPrice(${q.idx}, ${oIdx})">
+          <span>${txt}</span>
+          ${radioHtml()}
+        </button>`;
+      }).join("")}
+    </div>
+  `;
+}
+
+function renderCalmWaitScreen(opts) {
+  return `
+    <div class="center-block">
+      ${calmBadgeSvg(false)}
+      <h1 class="h1" style="margin-top:4px;">${opts.title}</h1>
+      <p class="lead" style="margin:0;">${opts.lead}</p>
+      <div class="calm-card">
+        <div class="calm-line"><span class="calm-dot ok"></span><span>${opts.line1}</span></div>
+        <div class="calm-line"><span class="calm-dot"></span><span>${opts.line2}</span></div>
+        <div class="calm-line"><span class="calm-dot"></span><span>有新进展会发微信服务通知，不用反复来查</span></div>
+      </div>
+    </div>
+  `;
+}
+
+function syncUrlParams() {
+  try {
+    const u = new URL(window.location.href);
+    u.searchParams.set("s", state.view);
+    window.history.replaceState(null, "", u.toString());
+  } catch (_) {}
+}
+
+function applyDirectionAnim(dir) {
+  const scr = document.getElementById("screen");
+  scr.classList.remove("dir-fwd", "dir-back");
+  if (dir !== "fwd" && dir !== "back") return;
+  void scr.offsetWidth;
+  scr.classList.add(dir === "back" ? "dir-back" : "dir-fwd");
+}
+
+function render(animDir = "none") {
+  const idx = SCREENS.findIndex((s) => s.id === state.view);
+  const meta = SCREENS[idx >= 0 ? idx : 0];
+  renderStageBar(meta, idx >= 0 ? idx : 0);
+
+  const backAllowed = [
+    "welcome", "deposit_notice", "addr_fallback", "bind_phone",
+    "aes_1", "aes_2", "aes_3", "experience",
+    "price_1", "price_2", "price_3", "order_proof", "p1", "p2", "p3",
+    "t1", "t2", "t3", "ship_no", "deposit_pay"
+  ].includes(state.view);
+  document.getElementById("btnBack").classList.toggle("hidden", !backAllowed);
+  document.getElementById("navTitle").textContent = (state.view === "wx_login" || state.view === "welcome") ? "无限天真" : "织女入驻";
+
+  const screen = document.getElementById("screen");
+  const nextBtn = document.getElementById("nextBtn");
+  let ready = true;
+  nextBtn.textContent = "下一步";
+
+  if (state.view === "wx_login") {
+    screen.innerHTML = `
+      <div class="center-block" style="justify-content:center;">
+        <div class="wx-login-card">
+          <div class="wx-brand-mark">${ICO.wxBubble}</div>
+          <h1 class="h1" style="text-align:center;">欢迎进入无限天真</h1>
+          <p class="lead" style="margin:0;text-align:center;">授权登录并自动绑定当前微信，后续看单与通知免输密码</p>
+          <div class="wx-acct-row">
+            <span class="wx-avatar">林</span>
+            <div style="min-width:0;flex:1;">
+              <div style="font-size:var(--font-sub);font-weight:600;color:var(--ink);">微信用户 · 林秀珍</div>
+              <div style="font-size:var(--font-cap);color:var(--ink-sub);margin-top:2px;">仅用于自动绑定平台手艺人档案</div>
+            </div>
+          </div>
+        </div>
+        <button id="wxConsentCheck" type="button" role="checkbox" aria-checked="${state.wxAgreed}" class="check-card ${state.wxAgreed ? "checked" : ""}" style="margin-top:0;" onclick="toggleWxConsent()">
+          <span class="check-box" aria-hidden="true">${state.wxAgreed ? ICO.check(15) : ""}</span>
+          <span>我同意微信一键登录并绑定账号</span>
+        </button>
+      </div>
+    `;
+    ready = state.wxAgreed;
+  } else if (state.view === "welcome") {
+    screen.innerHTML = `
+      <div class="wx-bound-pill">${ICO.check(13)}<span>已同意并绑定微信账号</span></div>
+      <div class="hero-art">${welcomeArtSvg()}</div>
+      <div class="head-row">
+        <h1 class="h1">在家钩织，按单结钱</h1>
+        ${speakBtnHtml("欢迎来到无限天真。在家钩织按单结钱，零抽成，免费寄毛线，随时退保证金。点下方下一步了解保证金规则。")}
+      </div>
+      <p class="lead">平台免费配线、专人质检，只管安心钩好每件作品</p>
+      <div class="pillar-group">
+        <div class="pillar-chip"><span class="pillar-ico">${ICO.coin}</span><span class="pillar-txt">0 抽成</span></div>
+        <div class="pillar-chip"><span class="pillar-ico">${ICO.yarn}</span><span class="pillar-txt">免费配线</span></div>
+        <div class="pillar-chip"><span class="pillar-ico">${ICO.refund}</span><span class="pillar-txt">随时退押</span></div>
+      </div>
+    `;
+  } else if (state.view === "deposit_notice") {
+    screen.innerHTML = `
+      <div class="head-row">
+        <h1 class="h1">提前说清：200 元保证金</h1>
+        ${speakBtnHtml("先说清楚两百元保证金规则，能接受咱们再继续。现在不用交钱，全部考过、寄样通过后才交；资金存专户，不接单时结清手头单就能原路全退。")}
+      </div>
+      <p class="lead">规则透明放最前面，能接受再继续报名</p>
+      <div class="cell-group">
+        <div class="cell-row">
+          <span class="cell-ico">${ICO.yarn}</span>
+          <div class="cell-body"><div class="cell-main">现在不收费</div><div class="cell-desc">全部考核与实物寄验通过后，开单前再交 ¥200</div></div>
+        </div>
+        <div class="cell-row">
+          <span class="cell-ico">${ICO.shield}</span>
+          <div class="cell-body"><div class="cell-main">毛线防损专户</div><div class="cell-desc">仅保障免费配发的毛线包，不计入平台收费</div></div>
+        </div>
+        <div class="cell-row">
+          <span class="cell-ico">${ICO.refund}</span>
+          <div class="cell-body"><div class="cell-main">随时原路全退</div><div class="cell-desc">不想做时，清完在途订单即可原路全额退回</div></div>
+        </div>
+      </div>
+      <button id="depAckBtn" type="button" role="checkbox" aria-checked="${state.depositAccepted}" class="check-card ${state.depositAccepted ? "checked" : ""}" onclick="toggleDepAck()">
+        <span class="check-box" aria-hidden="true">${state.depositAccepted ? ICO.check(15) : ""}</span>
+        <span>能接受 200 元保证金，继续</span>
+      </button>
+    `;
+    ready = state.depositAccepted;
+  } else if (state.view === "addr_fallback") {
+    const hasAddr = state.weaverAddr.trim().length >= 2;
+    const isImported = state.locationSource === "wx_address" && hasAddr;
+    screen.innerHTML = `
+      <div class="head-row">
+        <h1 class="h1">写一下你的常住地址</h1>
+        ${speakBtnHtml("没读到自动定位。点上方按钮直接用微信收货地址，也可以在下面手写省市街道，全国各地都能填，不设门槛。")}
+      </div>
+      <p class="lead">未读到自动定位，全国任意省市县乡均可填写</p>
+      <button id="importWxAddrBtn" type="button" class="action-card ${isImported ? "done" : ""}" onclick="importWxAddr()">
+        ${isImported ? `<span class="badge-pop" style="width:34px;height:34px;border-radius:50%;background:var(--ok);display:flex;align-items:center;justify-content:center;color:#FFF;">${ICO.check(18)}</span>` : `<span class="action-ico">${ICO.pin}</span>`}
+        <span style="font-size:var(--font-body);font-weight:500;color:${isImported ? "var(--ok)" : "var(--brand)"};">${isImported ? "已填入微信收货地址" : "一键填入微信收货地址"}</span>
+        <span class="action-sub">${isImported ? state.weaverAddr : "免打字，直接带出常用收件地址"}</span>
+      </button>
+      <div>
+        <label class="field-lbl" for="weaverAddrInput">或直接手写地址（全国各地无门槛）</label>
+        <input id="weaverAddrInput" class="big-input" type="text" placeholder="例：河南省洛阳市孟津区朝阳镇..." value="${state.weaverAddr}" oninput="onWeaverAddr(this.value)" />
+      </div>
+    `;
+    ready = hasAddr;
+  } else if (state.view === "bind_phone") {
+    const hasPhone = state.phone.trim().length >= 11;
+    const isWx = state.phoneSource === "wx_quick" && hasPhone;
+    screen.innerHTML = `
+      <div class="head-row">
+        <h1 class="h1">绑定你的手机号</h1>
+        ${speakBtnHtml("点上方大按钮直接授权微信手机号，不用手动输。手机号只用来发通知和寄毛线联系。")}
+      </div>
+      <p class="lead">仅用于审核通知与免费毛线包快递联系</p>
+      <button id="wxPhoneBtn" type="button" class="action-card ${isWx ? "done" : ""}" onclick="bindWxPhone()">
+        ${isWx ? `<span class="badge-pop" style="width:34px;height:34px;border-radius:50%;background:var(--ok);display:flex;align-items:center;justify-content:center;color:#FFF;">${ICO.check(18)}</span>` : `<span class="action-ico">${ICO.phone}</span>`}
+        <span style="font-size:var(--font-body);font-weight:500;color:${isWx ? "var(--ok)" : "var(--brand)"};">${isWx ? "已绑定微信手机号" : "一键绑定微信手机号"}</span>
+        <span class="action-sub">${isWx ? state.phone : "免打字、免收验证码，一点即绑"}</span>
+      </button>
+      <div>
+        <label class="field-lbl" for="phoneInput">或手动输入 11 位手机号</label>
+        <input id="phoneInput" class="big-input" type="tel" inputmode="numeric" maxlength="11" placeholder="请输入 11 位手机号" value="${state.phone}" oninput="onPhoneInput(this.value)" />
+      </div>
+    `;
+    ready = hasPhone;
+  } else if (state.view === "aes_1") {
+    screen.innerHTML = renderAestheticScreen(AESTHETIC_QUESTIONS[0]);
+    ready = state.aesAns[0] !== undefined;
+  } else if (state.view === "aes_2") {
+    screen.innerHTML = renderAestheticScreen(AESTHETIC_QUESTIONS[1]);
+    ready = state.aesAns[1] !== undefined;
+  } else if (state.view === "aes_3") {
+    screen.innerHTML = renderAestheticScreen(AESTHETIC_QUESTIONS[2]);
+    ready = state.aesAns[2] !== undefined;
+  } else if (state.view === "experience") {
+    screen.innerHTML = `
+      <div class="head-row">
+        <h1 class="h1">以前接过钩织单吗？</h1>
+        ${speakBtnHtml("请问你以前有没有帮别人钩织、卖成品或者接过手工单？按实际情况选就行。")}
+      </div>
+      <p class="lead">按实际情况选择，帮助我们了解你的上手节奏</p>
+      <div id="expStack" class="stack" role="radiogroup" aria-label="是否有钩织接单经历">
+        <button type="button" role="radio" aria-checked="${state.hasExperience === true}" class="choice-card ${state.hasExperience === true ? "selected" : ""}" onclick="pickExp(true)">
+          <span class="choice-left">
+            <span class="choice-art">${ICO.receipt}</span>
+            <span>
+              <span style="display:block;font-size:var(--font-body);font-weight:600;">有过接单经历</span>
+              <span style="display:block;font-size:var(--font-desc);color:var(--ink-mid);margin-top:2px;">接过网店单、定制单或卖过成品</span>
+            </span>
+          </span>
+          ${radioHtml()}
+        </button>
+        <button type="button" role="radio" aria-checked="${state.hasExperience === false}" class="choice-card ${state.hasExperience === false ? "selected" : ""}" onclick="pickExp(false)">
+          <span class="choice-left">
+            <span class="choice-art">${ICO.spark}</span>
+            <span>
+              <span style="display:block;font-size:var(--font-body);font-weight:600;">还没接过单</span>
+              <span style="display:block;font-size:var(--font-desc);color:var(--ink-mid);margin-top:2px;">平时自己钩着玩，或送亲友为主</span>
+            </span>
+          </span>
+          ${radioHtml()}
+        </button>
+      </div>
+    `;
+    ready = state.hasExperience !== null;
+  } else if (state.view === "price_1") {
+    screen.innerHTML = renderPriceScreen(PRICE_QUESTIONS[0]);
+    ready = state.priceAns[0] !== undefined;
+  } else if (state.view === "price_2") {
+    screen.innerHTML = renderPriceScreen(PRICE_QUESTIONS[1]);
+    ready = state.priceAns[1] !== undefined;
+  } else if (state.view === "price_3") {
+    screen.innerHTML = renderPriceScreen(PRICE_QUESTIONS[2]);
+    ready = state.priceAns[2] !== undefined;
+  } else if (state.view === "order_proof") {
+    screen.innerHTML = renderPhotoScreen({
+      title: "上传接单截图凭证",
+      lead: "发一张以前的接单聊天、订单或收款记录截图",
+      guide: "proof",
+      good: "真实接单或收款截屏",
+      bad: "网图或模糊裁切",
+      cta: "点击上传接单截图",
+      sub: "支持聊天记录、收款记录或店铺订单截图",
+      done: state.orderProofUploaded,
+      onTap: "tapOrderProof()"
+    });
+    ready = state.orderProofUploaded;
+  } else if (state.view === "p1") {
+    screen.innerHTML = renderPhotoScreen({
+      title: "上传作品照（1/3）：正面",
+      lead: "白天窗边自然光平放拍摄，看清整体造型",
+      guide: "p_front",
+      good: "光线清晰真实",
+      bad: "黄灯昏暗偏色",
+      done: state.pPhotos[0],
+      onTap: "tapP(0)"
+    });
+    ready = state.pPhotos[0];
+  } else if (state.view === "p2") {
+    screen.innerHTML = renderPhotoScreen({
+      title: "上传作品照（2/3）：针脚",
+      lead: "镜头靠近，拍清针眼松紧是否均匀",
+      guide: "p_stitch",
+      good: "针脚紧密均匀",
+      bad: "针眼大且露棉",
+      done: state.pPhotos[1],
+      onTap: "tapP(1)"
+    });
+    ready = state.pPhotos[1];
+  } else if (state.view === "p3") {
+    screen.innerHTML = renderPhotoScreen({
+      title: "上传作品照（3/3）：背面",
+      lead: "翻到背面，拍清收口与藏线是否利落",
+      guide: "back",
+      good: "收口干净无结",
+      bad: "线头外露凌乱",
+      done: state.pPhotos[2],
+      onTap: "tapP(2)"
+    });
+    ready = state.pPhotos[2];
+  } else if (state.view === "wait_1") {
+    screen.innerHTML = renderCalmWaitScreen({
+      title: "资料和作品已收到",
+      lead: "正在按顺序排期评估，请安心等待微信通知",
+      line1: "你的资料与 3 张作品照已完整入档",
+      line2: "匹配到合适名额时，将第一时间邀你进入测试题"
+    });
+  } else if (state.view === "test_guide") {
+    screen.innerHTML = `
+      <div class="head-row">
+        <h1 class="h1">测试题：钩一只小蘑菇</h1>
+        ${speakBtnHtml("初审已通过，请用家中四股棉按下面五圈钩一只小蘑菇，约四十分钟完成。钩完后点下一步拍照上传。")}
+      </div>
+      <p class="lead">自备 4 股棉线（约 40 分钟），点对应行可打勾记进度</p>
+      <div class="trial-visual">
+        ${mushroomStageSvg(state.stitchIdx)}
+        <div style="min-width:0;">
+          <div style="font-size:var(--font-sub);font-weight:600;color:var(--ink);">当前进度：第 ${state.stitchIdx + 1} / 5 圈</div>
+          <div style="font-size:var(--font-desc);color:var(--ink-mid);margin-top:2px;">钩完后请先拍 3 张测试照上传</div>
+        </div>
+      </div>
+      <div class="stitch-list">
+        ${STITCHES.map((s, sIdx) => {
+          const isCur = state.stitchIdx === sIdx;
+          const isDone = state.stitchIdx > sIdx;
+          return `<button type="button" class="stitch-row ${isCur ? "active" : isDone ? "done" : ""}" onclick="pickStitch(${sIdx})">
+            <span><span class="stitch-tag">${s.r}</span><span>${s.t}</span></span>
+            <span style="color:${isDone ? "var(--ok)" : "var(--brand)"};flex-shrink:0;">${isDone ? ICO.check(16) : isCur ? "进行中" : ""}</span>
+          </button>`;
+        }).join("")}
+      </div>
+    `;
+  } else if (state.view === "t1") {
+    screen.innerHTML = renderPhotoScreen({
+      title: "上传测试照（1/3）：正面附尺",
+      lead: "把小蘑菇平放白纸上，旁边放直尺标明高度",
+      guide: "t_front",
+      good: "白底附尺平拍",
+      bad: "无尺或黄光斜拍",
+      done: state.tPhotos[0],
+      onTap: "tapT(0)"
+    });
+    ready = state.tPhotos[0];
+  } else if (state.view === "t2") {
+    screen.innerHTML = renderPhotoScreen({
+      title: "上传测试照（2/3）：背面收口",
+      lead: "对焦换色与收口处，确认无线头外露",
+      guide: "back",
+      good: "换色藏线整齐",
+      bad: "线头外露松散",
+      done: state.tPhotos[1],
+      onTap: "tapT(1)"
+    });
+    ready = state.tPhotos[1];
+  } else if (state.view === "t3") {
+    screen.innerHTML = renderPhotoScreen({
+      title: "上传测试照（3/3）：侧面饱满",
+      lead: "手指轻捏侧面，展示充棉回弹状态",
+      guide: "t_side",
+      good: "圆润挺括饱满",
+      bad: "软塌变形起皱",
+      done: state.tPhotos[2],
+      onTap: "tapT(2)"
+    });
+    ready = state.tPhotos[2];
+  } else if (state.view === "wait_2") {
+    screen.innerHTML = renderCalmWaitScreen({
+      title: "测试照片已收到",
+      lead: "正在安排复核，请留意微信服务通知",
+      line1: "3 张小蘑菇测试照已入档，请保留好实物",
+      line2: "复核通过后，会第一时间通知你寄送作品地址"
+    });
+  } else if (state.view === "ship_addr") {
+    screen.innerHTML = `
+      <div class="head-row">
+        <h1 class="h1">寄送测试作品</h1>
+        ${speakBtnHtml("测试照片已通过，请将小蘑菇寄往质检组，包裹内附纸条写明手机号后四位。点下面按钮一键复制地址。")}
+      </div>
+      <p class="lead">邮费自理，实物留档质检不予退回</p>
+      <div class="addr-card">
+        <div class="addr-row"><span class="addr-k">收件人</span><span class="addr-v">无限天真质检组</span></div>
+        <div class="addr-row"><span class="addr-k">电　话</span><span class="addr-v">138-0571-8899</span></div>
+        <div class="addr-row"><span class="addr-k">地　址</span><span class="addr-v">浙江省杭州市滨江区江南大道 3 号楼 204</span></div>
+        <button type="button" class="addr-copy-btn" onclick="copyAddr()">${ICO.copy}<span>点击复制收件信息</span></button>
+      </div>
+      <div class="tip-banner tip-ok">
+        ${ICO.info}
+        <span>请在包裹里放一张小纸条，写上你手机号后 4 位。</span>
+      </div>
+    `;
+  } else if (state.view === "ship_no") {
+    const carrier = detectCarrier(state.trackingNo);
+    const hasNo = state.trackingNo.trim().length >= 6;
+    screen.innerHTML = `
+      <div class="head-row">
+        <h1 class="h1">填一下快递单号</h1>
+        ${speakBtnHtml("点上方大框直接扫描快递面单条形码，不用手动打字。")}
+      </div>
+      <p class="lead">寄出后登记单号，方便仓库核对你的包裹</p>
+      <button id="scanTrackBtn" type="button" class="action-card ${hasNo ? "done" : ""}" onclick="scanTrack()">
+        ${hasNo ? `<span class="badge-pop" style="width:34px;height:34px;border-radius:50%;background:var(--ok);display:flex;align-items:center;justify-content:center;color:#FFF;">${ICO.check(18)}</span>` : ICO.scan}
+        <span style="font-size:var(--font-body);font-weight:500;color:${hasNo ? "var(--ok)" : "var(--brand)"};">${hasNo ? `已识别 · ${carrier || "快递单号"}` : "点击扫描快递单条码"}</span>
+        <span class="action-sub">${hasNo ? state.trackingNo : "对准快递面单条形码即可，免打字"}</span>
+      </button>
+      <div>
+        <label class="field-lbl" for="trackInput">无法扫码时可手动填写单号</label>
+        <input id="trackInput" class="big-input" type="text" placeholder="例如 SF1234567890" value="${state.trackingNo}" oninput="onTrack(this.value)" />
+        <div id="carHint" style="min-height:20px;margin-top:6px;font-size:var(--font-desc);color:var(--ok);font-weight:500;">${carrier ? `快递公司：${carrier}` : ""}</div>
+      </div>
+    `;
+    ready = hasNo;
+  } else if (state.view === "wait_3") {
+    screen.innerHTML = renderCalmWaitScreen({
+      title: "快递单号已登记",
+      lead: "仓库收到作品后将做实物核对，有进展微信通知",
+      line1: `已登记单号：${state.trackingNo || "SF1234567890"}`,
+      line2: "核对通过后，将通过微信邀你完成实名与押金开单"
+    });
+  } else if (state.view === "bind_id") {
+    screen.innerHTML = `
+      <div class="head-row">
+        <h1 class="h1">实名绑定身份证</h1>
+        ${speakBtnHtml("实物作品已通过。请拍一下身份证人像面自动识别，用于实名签约和打款结算，信息严格加密保护。")}
+      </div>
+      <p class="lead">实物已通过，实名后工钱才能按单结算到账</p>
+      <button id="idUploadBtn" type="button" class="upload-area ${state.idBound ? "done" : ""}" onclick="scanIdCard()">
+        <span class="upload-inner">
+          ${state.idBound ? `<span class="badge-pop" style="width:34px;height:34px;border-radius:50%;background:var(--ok);display:flex;align-items:center;justify-content:center;color:#FFF;">${ICO.check(18)}</span>` : ICO.idCard}
+          <span class="upload-title">${state.idBound ? "身份证已核验通过" : "拍身份证人像面自动识别"}</span>
+          <span class="upload-sub">${state.idBound ? "点击可重新拍摄" : "免手输 18 位数字，仅用于实名打款"}</span>
+        </span>
+      </button>
+      ${state.idBound ? `
+        <div class="id-verified-box">
+          <div style="font-size:var(--font-sub);font-weight:600;color:var(--ink);">姓名：${state.idName}</div>
+          <div style="font-size:var(--font-desc);color:var(--ink-mid);font-variant-numeric:tabular-nums;">证件号：${state.idNumberMasked}</div>
+        </div>
+      ` : `
+        <div class="tip-banner tip-soft">
+          ${ICO.shield}
+          <span>证件信息仅用于工钱合规结算，平台严格加密保管。</span>
+        </div>
+      `}
+    `;
+    ready = state.idBound;
+  } else if (state.view === "deposit_pay") {
+    screen.innerHTML = `
+      <div class="center-block">
+        ${calmBadgeSvg(true)}
+        <h1 class="h1" style="margin-top:4px;">最后一步：交 200 元保证金</h1>
+        <div class="big-num">¥200.00</div>
+        <p class="lead" style="margin:0 0 6px;">交完即刻寄出 12 色免费起步毛线，正式开单</p>
+        <div class="cell-group" style="width:100%;text-align:left;">
+          <div class="cell-row" style="padding:12px 14px;">
+            <span class="cell-ico">${ICO.yarn}</span>
+            <div class="cell-body"><div class="cell-main" style="font-size:var(--font-sub);">付款后即刻寄出 12 色起步毛线包</div></div>
+          </div>
+          <div class="cell-row" style="padding:12px 14px;">
+            <span class="cell-ico">${ICO.refund}</span>
+            <div class="cell-body"><div class="cell-main" style="font-size:var(--font-sub);">结清在途订单可随时原路全额退回</div></div>
+          </div>
+        </div>
+      </div>
+    `;
+  } else if (state.view === "approved") {
+    screen.innerHTML = `
+      <div class="head-row">
+        <h1 class="h1">已开通接单，欢迎加入</h1>
+        <span class="id-badge badge-pop">工号 WV-2026-018</span>
+      </div>
+      <p class="lead" style="margin-bottom:12px;">12 色免费起步毛线包已安排寄出，点下一步进入接单台</p>
+      <div class="yarn-4x3">
+        ${YARNS_12.map((y) => `
+          <div class="yarn-dot-card">
+            <span class="yarn-ball" style="background:${y.c};" aria-hidden="true"></span>
+            <span>${y.n}</span>
+          </div>
+        `).join("")}
+      </div>
+    `;
+  }
+
+  nextBtn.setAttribute("aria-disabled", String(!ready));
+  applyDirectionAnim(animDir);
+  syncUrlParams();
+  renderReviewer();
+}
+
+function renderReviewer() {
+  const ev = evaluateHiddenCriteria();
+  const tierMeta = {
+    silent_out: { pill: "silent",   label: "未达及格线·静默不入库", desc: "未满足暗中标准，不入织女库，等待页静默停留，不发任何失败告知。" },
+    reserve:    { pill: "reserve",  label: "过及格线·入织女储备库", desc: "已达隐藏及格线，进入织女库等待后续开放更多渠道，暂不推进测试题。" },
+    priority:   { pill: "priority", label: "高分达标·进测试/接单库", desc: "暗审全标达线且排名靠前，可放行进入钩织测试题与优先接单织女库。" }
+  }[ev.activeTier];
+
+  const badge = document.getElementById("poolBadge");
+  badge.className = `pool-pill ${tierMeta.pill}`;
+  badge.textContent = `${tierMeta.label} (${ev.score}分)`;
+
+  document.getElementById("hiddenTagGrid").innerHTML = ev.tags.map((t) => {
+    const sym = t.status === "pass" ? "✓" : t.status === "miss" ? "×" : "·";
+    return `<span class="h-tag ${t.status}">${sym} ${t.label}</span>`;
+  }).join("");
+
+  document.getElementById("poolNote").textContent = tierMeta.desc;
+
+  document.getElementById("poolBtns").innerHTML = POOL_MODES.map((m) => `
+    <button type="button" class="seg-btn ${state.poolMode === m.id ? "active" : ""}" onclick="setPoolMode('${m.id}')">${m.name}</button>
+  `).join("");
+
+  document.getElementById("revList").innerHTML = SCREENS.map((s) => {
+    const skipped = (s.id === "order_proof" && state.hasExperience === false) || (s.id === "addr_fallback" && !state.locFailed);
+    return `<button type="button" class="rev-btn ${state.view === s.id ? "active" : ""} ${skipped ? "muted-skip" : ""}" onclick="jump('${s.id}', 'none')">
+      <span>${s.label}</span>
+      <span style="opacity:0.68;">${skipped ? "自动跳过" : s.stage}</span>
+    </button>`;
+  }).join("");
+
+  document.getElementById("specJson").textContent = JSON.stringify({
+    version: "v4-hidden-tags",
+    wxConsentedAndBound: state.wxAgreed ? state.wxUserId : false,
+    depositAccepted: state.depositAccepted,
+    locationSource: state.locationSource,
+    phone: state.phone || null,
+    hiddenScore: ev.score,
+    aestheticPassed: ev.aesPassedCount + "/3",
+    hiddenTags: Object.fromEntries(ev.tags.map((t) => [t.key, t.status])),
+    backendPoolTier: ev.activeTier,
+    canEnterTrialTest: ev.activeTier === "priority",
+    weaverFailureNoticeShown: false
+  }, null, 2);
+}
+
+/* ===== Single Global Next Button Logic ===== */
+function onNext() {
+  const v = state.view;
+
+  if (v === "wx_login" && !state.wxAgreed) return nudgeTarget("#wxConsentCheck", "请先勾选同意微信一键登录");
+  if (v === "deposit_notice" && !state.depositAccepted) return nudgeTarget("#depAckBtn", "请先勾选接受 200 元保证金规则");
+  if (v === "addr_fallback" && state.weaverAddr.trim().length < 2) return nudgeTarget("#importWxAddrBtn", "请先一键填入或手写你的地址");
+  if (v === "bind_phone" && state.phone.trim().length < 11) return nudgeTarget("#wxPhoneBtn", "请先一键绑定或输入 11 位手机号");
+  if (v === "aes_1" && state.aesAns[0] === undefined) return nudgeTarget("#aesGrid button", "请先点选作品 A 或作品 B");
+  if (v === "aes_2" && state.aesAns[1] === undefined) return nudgeTarget("#aesGrid button", "请先点选作品 A 或作品 B");
+  if (v === "aes_3" && state.aesAns[2] === undefined) return nudgeTarget("#aesGrid button", "请先点选作品 A 或作品 B");
+  if (v === "experience" && state.hasExperience === null) return nudgeTarget("#expStack button", "请先选择以前有没有接过单");
+  if (v === "price_1" && state.priceAns[0] === undefined) return nudgeTarget("#priceGrid button", "请先选一个大概价位");
+  if (v === "price_2" && state.priceAns[1] === undefined) return nudgeTarget("#priceGrid button", "请先选一个大概价位");
+  if (v === "price_3" && state.priceAns[2] === undefined) return nudgeTarget("#priceGrid button", "请先选一个大概价位");
+  if (v === "order_proof" && !state.orderProofUploaded) return nudgeTarget("#photoUploadBtn", "请先上传一张接单截图凭证");
+  if ((v === "p1" && !state.pPhotos[0]) || (v === "p2" && !state.pPhotos[1]) || (v === "p3" && !state.pPhotos[2]) ||
+      (v === "t1" && !state.tPhotos[0]) || (v === "t2" && !state.tPhotos[1]) || (v === "t3" && !state.tPhotos[2])) {
+    return nudgeTarget("#photoUploadBtn", "请先点上方虚线框添加照片");
+  }
+  if (v === "ship_no" && state.trackingNo.trim().length < 6) return nudgeTarget("#scanTrackBtn", "请先扫条形码或输入快递单号");
+  if (v === "bind_id" && !state.idBound) return nudgeTarget("#idUploadBtn", "请先拍摄身份证人像面完成实名");
+
+  if (v === "wx_login") {
+    jump("welcome", "fwd");
+    showToast("已同意并自动绑定微信账号");
+    return;
+  }
+  if (v === "welcome") return jump("deposit_notice", "fwd");
+  if (v === "deposit_notice") {
+    if (state.locFailed) return jump("addr_fallback", "fwd");
+    state.locationSource = "auto_gps";
+    state.weaverAddr = "浙江省杭州市滨江区西兴街道";
+    jump("bind_phone", "fwd");
+    showToast("已自动识别定位，免手填地址");
+    return;
+  }
+  if (v === "addr_fallback") return jump("bind_phone", "fwd");
+  if (v === "bind_phone") return jump("aes_1", "fwd");
+  if (v === "aes_1") return jump("aes_2", "fwd");
+  if (v === "aes_2") return jump("aes_3", "fwd");
+  if (v === "aes_3") return jump("experience", "fwd");
+  if (v === "experience") return jump("price_1", "fwd");
+  if (v === "price_1") return jump("price_2", "fwd");
+  if (v === "price_2") return jump("price_3", "fwd");
+  if (v === "price_3") return jump(state.hasExperience === false ? "p1" : "order_proof", "fwd");
+  if (v === "order_proof") return jump("p1", "fwd");
+  if (v === "p1") return jump("p2", "fwd");
+  if (v === "p2") return jump("p3", "fwd");
+  if (v === "p3") return jump("wait_1", "fwd");
+
+  /* Silent Elimination Gate: ONLY priority-tier weavers advance into trial test & downstream! */
+  if (v === "wait_1" || v === "wait_2" || v === "wait_3") {
+    const ev = evaluateHiddenCriteria();
+    if (ev.activeTier !== "priority") {
+      showToast("已登记好，有新名额时微信会通知你");
+      return;
+    }
+    if (v === "wait_1") return jump("test_guide", "fwd");
+    if (v === "wait_2") return jump("ship_addr", "fwd");
+    if (v === "wait_3") return jump("bind_id", "fwd");
+  }
+
+  if (v === "test_guide") return jump("t1", "fwd");
+  if (v === "t1") return jump("t2", "fwd");
+  if (v === "t2") return jump("t3", "fwd");
+  if (v === "t3") return jump("wait_2", "fwd");
+  if (v === "ship_addr") return jump("ship_no", "fwd");
+  if (v === "ship_no") return jump("wait_3", "fwd");
+  if (v === "bind_id") return jump("deposit_pay", "fwd");
+  if (v === "deposit_pay") { openPaySheet(); return; }
+  if (v === "approved") { showToast("已进入接单工作台 · WV-2026-018"); return; }
+}
+
+function goBack() {
+  if (state.view === "bind_phone") return jump(state.locFailed ? "addr_fallback" : "deposit_notice", "back");
+  if (state.view === "p1") return jump(state.hasExperience === false ? "price_3" : "order_proof", "back");
+  const prev = {
+    welcome: "wx_login",
+    deposit_notice: "welcome",
+    addr_fallback: "deposit_notice",
+    aes_1: "bind_phone",
+    aes_2: "aes_1",
+    aes_3: "aes_2",
+    experience: "aes_3",
+    price_1: "experience",
+    price_2: "price_1",
+    price_3: "price_2",
+    order_proof: "price_3",
+    p2: "p1",
+    p3: "p2",
+    t1: "test_guide",
+    t2: "t1",
+    t3: "t2",
+    ship_no: "ship_addr",
+    deposit_pay: "bind_id"
+  }[state.view];
+  if (prev) jump(prev, "back");
+}
+
+function jump(id, animDir = "none") {
+  closeVoicePop();
+  clearTimeout(showToast._t);
+  const toastEl = document.getElementById("toast");
+  if (toastEl) toastEl.classList.remove("show");
+  state.view = id;
+  render(animDir);
+}
+
+/* ===== Interactions ===== */
+function toggleWxConsent() { state.wxAgreed = !state.wxAgreed; render("none"); }
+function toggleDepAck() { state.depositAccepted = !state.depositAccepted; render("none"); }
+function importWxAddr() {
+  state.locationSource = "wx_address";
+  state.weaverAddr = "四川省绵阳市涪城区跃进路 26 号";
+  showToast("已填入微信收货地址");
+  render("none");
+}
+function onWeaverAddr(v) {
+  state.locationSource = "manual_input";
+  state.weaverAddr = v;
+  document.getElementById("nextBtn").setAttribute("aria-disabled", String(v.trim().length < 2));
+  renderReviewer();
+}
+function bindWxPhone() {
+  state.phone = "13805718899";
+  state.phoneSource = "wx_quick";
+  showToast("已绑定微信手机号");
+  render("none");
+}
+function onPhoneInput(v) {
+  state.phone = v.replace(/\D/g, "").slice(0, 11);
+  state.phoneSource = "manual";
+  document.getElementById("nextBtn").setAttribute("aria-disabled", String(state.phone.length < 11));
+  renderReviewer();
+}
+function pickAes(qIdx, oIdx) { state.aesAns[qIdx] = oIdx; render("none"); }
+function pickExp(flag) { state.hasExperience = flag; render("none"); }
+function pickPrice(qIdx, oIdx) { state.priceAns[qIdx] = oIdx; render("none"); }
+function tapOrderProof() { state.orderProofUploaded = true; showToast("接单截图已添加"); render("none"); }
+function tapP(i) { state.pPhotos[i] = true; showToast("作品照片已添加"); render("none"); }
+function pickStitch(i) { state.stitchIdx = i; render("none"); }
+function tapT(i) { state.tPhotos[i] = true; showToast("测试照片已添加"); render("none"); }
+function copyAddr() {
+  if (navigator.clipboard) navigator.clipboard.writeText("无限天真质检组 138-0571-8899 浙江省杭州市滨江区江南大道 3 号楼 204").catch(() => {});
+  showToast("收件地址已复制");
+}
+function scanTrack() { state.trackingNo = "SF1234567890"; showToast("已识别快递单号"); render("none"); }
+function onTrack(v) {
+  state.trackingNo = v;
+  const c = detectCarrier(v);
+  const el = document.getElementById("carHint");
+  if (el) el.textContent = c ? `快递公司：${c}` : "";
+  document.getElementById("nextBtn").setAttribute("aria-disabled", String(v.trim().length < 6));
+  renderReviewer();
+}
+function scanIdCard() {
+  state.idBound = true;
+  state.idName = "林秀珍";
+  state.idNumberMasked = "330108********2426";
+  showToast("身份证信息已核验");
+  render("none");
+}
+function openPaySheet() { closeVoicePop(); document.getElementById("paySheet").classList.add("open"); }
+function closePaySheet() { document.getElementById("paySheet").classList.remove("open"); }
+function confirmPaid() {
+  closePaySheet();
+  state.depositPaid = true;
+  showToast("保证金已缴清，欢迎开单");
+  jump("approved", "fwd");
+}
+
+/* ===== Reviewer Simulators ===== */
+function setPoolMode(id) {
+  state.poolMode = id;
+  renderReviewer();
+  showToast(id === "auto" ? "已切回：按实际答题暗标自动判定" : "已切换后台强制分流模拟");
+}
+function simFillPass() {
+  state.wxAgreed = true;
+  state.depositAccepted = true;
+  state.phone = "13805718899";
+  state.phoneSource = "wx_quick";
+  state.aesAns = { 0: 0, 1: 1, 2: 0 };
+  state.hasExperience = true;
+  state.priceAns = { 0: 1, 1: 2, 2: 2 };
+  state.orderProofUploaded = true;
+  state.pPhotos = [true, true, true];
+  state.poolMode = "auto";
+  jump("wait_1", "none");
+  showToast("已按标准答案填满：点下一步可进测试题");
+}
+function simFillMiss() {
+  state.wxAgreed = true;
+  state.depositAccepted = true;
+  state.phone = "13805718899";
+  state.aesAns = { 0: 1, 1: 0, 2: 1 };
+  state.hasExperience = false;
+  state.priceAns = { 0: 0, 1: 0, 2: 0 };
+  state.pPhotos = [true, true, true];
+  state.poolMode = "auto";
+  jump("wait_1", "none");
+  showToast("已模拟暗标不达标：前台静默停留，无失败提示");
+}
+function simLocFail() { state.locFailed = true; state.locationSource = "manual_input"; state.weaverAddr = ""; jump("addr_fallback", "none"); }
+function resetAll() {
+  Object.assign(state, {
+    view: "wx_login", wxAgreed: false, depositAccepted: false, locFailed: false, locationSource: "auto_gps",
+    weaverAddr: "浙江省杭州市滨江区西兴街道", phone: "", phoneSource: "", aesAns: {}, hasExperience: null,
+    priceAns: {}, orderProofUploaded: false, pPhotos: [false, false, false], stitchIdx: 0,
+    tPhotos: [false, false, false], trackingNo: "", idBound: false, idName: "", idNumberMasked: "",
+    depositPaid: false, poolMode: "auto", speaking: false
+  });
+  render("none");
+}
+
+window.addEventListener("keydown", (e) => {
+  if (e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA")) return;
+  if (e.key === "Escape") { closeVoicePop(); closePaySheet(); return; }
+  const idx = SCREENS.findIndex((s) => s.id === state.view);
+  if (e.key === "ArrowRight" && idx >= 0 && idx < SCREENS.length - 1) { e.preventDefault(); jump(SCREENS[idx + 1].id, "none"); }
+  else if (e.key === "ArrowLeft" && idx > 0) { e.preventDefault(); jump(SCREENS[idx - 1].id, "none"); }
+});
+
+(() => {
+  try {
+    const s = new URLSearchParams(window.location.search).get("s");
+    if (s && SCREENS.some((x) => x.id === s)) state.view = s;
+  } catch (_) {}
+  render("none");
+})();
+</script>
+</body>
+</html>
